@@ -6,12 +6,6 @@
   <strong>A PowerShell control panel for Spicetify + Spotify Desktop.</strong>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/powershellgallery/compatibility/SpicetifyManager?label=PowerShell%205.1%2B&color=blue" alt="PowerShell 5.1+" />
-  <img src="https://img.shields.io/badge/platform-Windows-blue" alt="Windows" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License" />
-</p>
-
 ---
 
 ## Features
@@ -205,7 +199,3 @@ Spicetify-Manager/
 - [Spotify](https://www.spotify.com/) — Music streaming platform
 
 ---
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
