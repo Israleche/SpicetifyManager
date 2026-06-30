@@ -1,0 +1,27 @@
+# =====================
+# Spicetify Manager
+# =====================
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# PowerShell
+*.ps1.bak
+*.ps1.old
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+._*
+
+# Archives (not tracked)
+*.zip
