@@ -175,7 +175,6 @@ Spicetify-Manager/
 ├── docs/
 │   └── TROUBLESHOOTING.md    # Detailed troubleshooting guide
 ├── .gitignore                # Git ignore rules
-├── LICENSE                   # MIT License
 ├── README.md                 # This file
 ├── Spicify_Manager.ps1       # Main PowerShell script
 └── Spicetify-Manager.bat     # Double-click launcher
