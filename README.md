@@ -4,10 +4,20 @@
 
 <p align=\"center\">
   <strong>Modern TUI control panel for Spicetify + Spotify Desktop</strong><br/>
-  <sub>v2.0.0 — Redesigned with curved borders & improved aesthetics</sub>
+  <sub>v2.1.0 — Professional PowerShell architecture with persistent settings</sub>
 </p>
 
 ---
+
+## ✨ What's New in v2.1.0
+
+- ⚙️ **Persistent JSON settings** — Configuration saved to `$HOME/.spicetify-manager/settings.json`
+- 🚀 **Silent mode** — Run non-interactively with `-Silent` parameter
+- 📊 **Advanced UI helpers** — Progress bars, spinners, arrow-key menus
+- 📖 **About screen** — App info, version, license, and links
+- 🔧 **Enhanced parameters** — `-ShowProgress`, `-EnableDebug`, `-AutoFix`, `-AutoOpen`, `-NoPersist`
+- 🖥️ **Console size initialization** — Adaptive terminal sizing
+- ✅ **100% backward compatible** — All existing features unchanged
 
 ## ✨ What's New in v2.0.0
 
@@ -16,7 +26,6 @@
 - 📦 **L2 UTF-8 box-drawing** — Professional terminal UI
 - 🆕 **Info helper** for neutral informational messages
 - ⚙️ **Adaptive window width** for better terminal compatibility
-- ✅ **100% backward compatible** — All existing features unchanged
 
 ---
 
@@ -124,13 +133,53 @@ When you launch the manager, you'll see the main menu:
 
 ---
 
+## Advanced Features
+
+### Silent Mode
+
+Run the full auto-flow non-interactively:
+
+```powershell
+.\Spicetify_Manager.ps1 -Silent
+```
+
+This will:
+1. Install Spicetify if missing
+2. Fix Spotify installation if needed
+3. Run `spicetify auto`
+4. Exit automatically
+
+### Settings Persistence
+
+Settings are saved to `$HOME\.spicetify-manager\settings.json` and persist across sessions:
+
+```powershell
+# Load saved settings and run
+.\Spicetify_Manager.ps1
+
+# Override settings for this session only
+.\Spicetify_Manager.ps1 -ShowProgress 0 -AutoFix 1
+```
+
+### Advanced UI Components
+
+The script includes professional TUI helpers:
+
+- **Progress bars** — 4 styles: Blocks, Dots, Arrow, Solid
+- **Spinners** — Animated loading indicators
+- **Arrow-key menus** — Navigate with up/down arrows
+- **Box drawing** — Modern curved borders (╭─╮)
+
+---
+
 ## Settings
 
-Settings are **per-session** — they reset when you close the manager. This keeps things simple and stateless.
+Settings are **persistent** — they save to JSON and load on next run.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ShowCommandProgress` | ON | Display spicetify CLI output as commands run |
+| `ShowProgress` | ON | Display spicetify CLI output as commands run |
+| `DebugMode` | OFF | Enable debug logging |
 | `AutoFixSpotify` | ON | Automatically detect and fix Spotify issues at startup |
 | `AutoOpenSpotify` | ON | Open Spotify after apply/restore operations |
 
@@ -143,8 +192,11 @@ Settings are **per-session** — they reset when you close the manager. This kee
 | Parameter | Values | Effect |
 |-----------|--------|--------|
 | `-ShowProgress` | `0` or `1` | Hide/show CLI output |
+| `-EnableDebug` | `0` or `1` | Enable debug mode |
 | `-AutoFix` | `0` or `1` | Disable/enable Spotify auto-fix |
 | `-AutoOpen` | `0` or `1` | Disable/enable auto-open Spotify |
+| `-Silent` | (switch) | Run non-interactively |
+| `-NoPersist` | (switch) | Don't load/save settings JSON |
 
 ---
 
@@ -188,8 +240,9 @@ Spicetify-Manager/
 │   └── TROUBLESHOOTING.md    # Detailed troubleshooting guide
 ├── .gitignore                # Git ignore rules
 ├── README.md                 # This file
-├── Spicify_Manager.ps1       # Main PowerShell script
-└── Spicetify-Manager.bat     # Double-click launcher
+├── Spicetify_Manager.ps1     # Main PowerShell script
+├── Spicetify-Manager.bat     # Double-click launcher
+└── settings.json             # User settings (auto-created in $HOME/.spicetify-manager/)
 ```
 
 ---
