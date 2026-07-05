@@ -1,12 +1,18 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Spicetify Manager - control panel for Spicetify + Spotify.
+    Spicetify Manager — Interactive control panel for Spicetify + Spotify Desktop.
 .DESCRIPTION
-    Manage Spicetify operations: auto apply, full restore, quick repair,
-    themes, extensions, Marketplace, and Spotify Desktop installation.
+    Comprehensive wrapper around Spicetify CLI with modern TUI. Manage themes,
+    extensions, Marketplace, Spotify Desktop installation, backups, and repairs
+    through an elegant interactive menu system.
 .NOTES
-    License: MIT
+    File Name      : Spicetify_Manager.ps1
+    Version        : 2.0.0
+    Author         : Israleche
+    License        : MIT
+    Prerequisite   : PowerShell 5.1+ (Windows 10/11)
+    Encoding       : UTF-8 (BOM required for box-drawing chars on PS 5.1)
 #>
 
 [CmdletBinding()]
@@ -35,17 +41,19 @@ $Script:SpicetifyInstallUrl   = 'https://raw.githubusercontent.com/spicetify/cli
 $Script:MarketplaceInstallUrl = 'https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.ps1'
 $Script:SpotifyInstallerUrl   = 'https://download.scdn.co/SpotifySetup.exe'
 
-# Palette: red logo, gray UI, green for ON/success
+# Modern color palette: unified visual language
 $Script:Palette = @{
-    Logo    = 'Red'
-    Primary = 'White'
-    Muted   = 'DarkGray'
-    On      = 'Green'
-    Off     = 'DarkGray'
-    Success = 'Green'
-    Warning = 'Yellow'
-    Danger  = 'Red'
-    Prompt  = 'White'
+    Logo    = 'Magenta'    # ASCII banner
+    Primary = 'White'      # Regular text
+    Muted   = 'DarkGray'   # Borders, dividers
+    Accent  = 'Cyan'       # Highlights, key labels
+    On      = 'Green'      # Active state
+    Off     = 'DarkGray'   # Inactive state
+    Success = 'Green'      # [+] success
+    Warning = 'Yellow'     # [!] warning
+    Danger  = 'Red'        # [x] error
+    Info    = 'Cyan'       # [i] info
+    Prompt  = 'White'      # Input prompts
 }
 
 # Session-only settings (no file persistence)
@@ -58,31 +66,49 @@ if ($ShowProgress -ge 0) { $Script:ShowCommandProgress = [bool]$ShowProgress }
 if ($AutoFix      -ge 0) { $Script:AutoFixSpotify      = [bool]$AutoFix }
 if ($AutoOpen     -ge 0) { $Script:AutoOpenSpotify     = [bool]$AutoOpen }
 
-# UI helpers
+# UI helpers: inline status markers (convention: 2 spaces indent + 3-char bracket)
 function Write-Step { param([string]$Text) Write-Host ("  > $Text") -ForegroundColor $Script:Palette.Muted }
 function Write-Ok   { param([string]$Text) Write-Host ("  [+] $Text") -ForegroundColor $Script:Palette.Success }
 function Write-Warn { param([string]$Text) Write-Host ("  [!] $Text") -ForegroundColor $Script:Palette.Warning }
 function Write-Err  { param([string]$Text) Write-Host ("  [x] $Text") -ForegroundColor $Script:Palette.Danger }
+function Write-Info { param([string]$Text) Write-Host ("  [i] $Text") -ForegroundColor $Script:Palette.Info }
 
-# Box: 3 separate functions so each line is its own Write-Host call
+# Modern curved box-drawing glyphs (L2 UTF-8 standard)
+$Script:Box = @{
+    TopLeft  = [string][char]0x256D   # ╭
+    TopRight = [string][char]0x256E   # ╮
+    BotLeft  = [string][char]0x2570   # ╰
+    BotRight = [string][char]0x256F   # ╯
+    H        = [string][char]0x2500   # ─
+    V        = [string][char]0x2502   # │
+    CrossL   = [string][char]0x251C   # ├
+    CrossR   = [string][char]0x2524   # ┤
+}
+
 $Script:BoxWidth = 62
+
+function Update-BoxWidth {
+    $width = 62
+    try {
+        $cw = $Host.UI.RawUI.WindowSize.Width
+        if ($cw -gt 40 -and $cw -lt 200) { $width = [Math]::Min(80, $cw - 4) }
+    } catch {}
+    if ($width -lt 50) { $width = 50 }
+    $Script:BoxWidth = $width
+}
 
 function Write-BoxTop {
     param([Parameter(Mandatory)][string]$Title)
-    $width = 62
-    try { $cw = $Host.UI.RawUI.WindowSize.Width; if ($cw -gt 40 -and $cw -lt 200) { $width = [Math]::Min(80, $cw - 4) } } catch {}
-    if ($width -lt 50) { $width = 50 }
-    $Script:BoxWidth = $width
-    $inner  = $width - 4
-    $dashes = '-' * ($width - 2)
-    Write-Host ('  +' + $dashes + '+') -ForegroundColor $Script:Palette.Muted
-    $t = [string]$Title
-    if ($t.Length -gt $inner) { $t = $t.Substring(0, $inner) }
-    $pad  = $inner - $t.Length
-    $padL = [int]([Math]::Floor($pad / 2))
-    $padR = $pad - $padL
-    Write-Host ("  | " + (' ' * $padL) + $t + (' ' * $padR) + " |") -ForegroundColor $Script:Palette.Primary
-    Write-Host ('  +' + $dashes + '+') -ForegroundColor $Script:Palette.Muted
+    Update-BoxWidth
+    $width = $Script:BoxWidth
+    $title = [string]$Title
+    $innerSpan = $width - 2
+    if ($title.Length -gt ($innerSpan - 4)) { $title = $title.Substring(0, $innerSpan - 4) }
+    $decoLen = $innerSpan - $title.Length - 2
+    $sideLen = [int][Math]::Floor($decoLen / 2)
+    $rightLen = $decoLen - $sideLen
+    $line = $Script:Box.TopLeft + ($Script:Box.H * $sideLen) + ' ' + $title + ' ' + ($Script:Box.H * $rightLen) + $Script:Box.TopRight
+    Write-Host ('  ' + $line) -ForegroundColor $Script:Palette.Muted
 }
 
 function Write-BoxLine {
@@ -95,16 +121,18 @@ function Write-BoxLine {
         $lastSpace = $chunk.LastIndexOf(' ')
         if ($lastSpace -gt 20) { $chunk = $t.Substring(0, $lastSpace); $t = $t.Substring($lastSpace + 1) }
         else { $t = $t.Substring($inner) }
-        $p = $inner - $chunk.Length
-        Write-Host ("  | " + $chunk + (' ' * $p) + " |") -ForegroundColor $Script:Palette.Primary
+        $pad = $inner - $chunk.Length
+        Write-Host ("  " + $Script:Box.V + " " + $chunk + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Primary
     }
-    $p = $inner - $t.Length
-    Write-Host ("  | " + $t + (' ' * $p) + " |") -ForegroundColor $Script:Palette.Primary
+    $pad = $inner - $t.Length
+    Write-Host ("  " + $Script:Box.V + " " + $t + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Primary
 }
 
 function Write-BoxBottom {
-    $dashes = '-' * ($Script:BoxWidth - 2)
-    Write-Host ('  +' + $dashes + '+') -ForegroundColor $Script:Palette.Muted
+    $width = $Script:BoxWidth
+    $innerSpan = $width - 2
+    $line = $Script:Box.BotLeft + ($Script:Box.H * $innerSpan) + $Script:Box.BotRight
+    Write-Host ('  ' + $line) -ForegroundColor $Script:Palette.Muted
 }
 
 function Read-YesNo {
