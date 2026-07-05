@@ -159,7 +159,7 @@ if ($AutoOpen     -ge 0) { $Script:Settings.AutoOpenSpotify     = [bool]$AutoOpe
 # functions. All glyphs are referenced by code point so the source file
 # remains pure ASCII (portable across encodings).
 $Script:Palette = @{
-    Logo    = 'Magenta'    # ASCII banner
+    Logo    = 'Red'        # ASCII banner
     Primary = 'White'      # Regular text inside frames
     Muted   = 'DarkGray'   # Borders, dividers, secondary traces
     Accent  = 'Cyan'       # Highlights, key labels, focused items
@@ -183,6 +183,7 @@ $Script:Box = @{
     V        = [string][char]0x2502   # │
     CrossL   = [string][char]0x251C   # ├
     CrossR   = [string][char]0x2524   # ┤
+    Bullet   = [string][char]0x25BA   # ►
 }
 
 # ============================================================================
@@ -281,6 +282,87 @@ function Write-BoxBottom {
     Write-Host ('  ' + $line) -ForegroundColor $Script:Palette.Muted
 }
 
+function Write-BoxSeparator {
+    <#.SYNOPSIS Renders an internal horizontal divider: ├──...──┤#>
+    [CmdletBinding()] param()
+    $width     = $Script:BoxWidth
+    $innerSpan = $width - 2
+    $line = $Script:Box.CrossL + ($Script:Box.H * $innerSpan) + $Script:Box.CrossR
+    Write-Host ('  ' + $line) -ForegroundColor $Script:Palette.Muted
+}
+
+function Write-BoxSubtitle {
+    <#.SYNOPSIS Renders a centered subtitle inside a box: ── Section ──#>
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Title)
+    $width = $Script:BoxWidth
+    $inner = $width - 4
+    $t = [string]$Title
+    if ($t.Length -gt ($inner - 6)) { $t = $t.Substring(0, $inner - 6) }
+    $decoLen  = $inner - $t.Length - 2
+    $sideLen  = [int][Math]::Floor($decoLen / 2)
+    $rightLen = $decoLen - $sideLen
+    $content = ($Script:Box.H * $sideLen) + ' ' + $t + ' ' + ($Script:Box.H * $rightLen)
+    $pad = $inner - $content.Length
+    if ($pad -lt 0) { $content = $content.Substring(0, $inner); $pad = 0 }
+    Write-Host ("  " + $Script:Box.V + " " + $content + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Accent
+}
+
+function Write-BoxKeyValue {
+    <#
+    .SYNOPSIS
+        Renders a key-value row with dotted leader between them:
+        │  Key...........Value │
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][string]$Value,
+        [string]$KeyColor,
+        [string]$ValueColor
+    )
+    $width = $Script:BoxWidth
+    $inner = $width - 4
+    $k = [string]$Key
+    $v = [string]$Value
+    $keyPart = "  " + $k
+    $minDots = 3
+    $maxKeyLen = $inner - $minDots - 1
+    if ($keyPart.Length -gt $maxKeyLen) {
+        $keyPart = $keyPart.Substring(0, $maxKeyLen)
+    }
+    $availForValue = $inner - $keyPart.Length - $minDots
+    if ($availForValue -lt 1) { $availForValue = 1 }
+    if ($v.Length -gt $availForValue) { $v = $v.Substring(0, $availForValue) }
+    $dotsCount = $inner - $keyPart.Length - $v.Length
+    if ($dotsCount -lt 1) { $dotsCount = 1 }
+
+    $kColor = if ($KeyColor)   { $KeyColor }   else { $Script:Palette.Accent  }
+    $vColor = if ($ValueColor) { $ValueColor } else { $Script:Palette.Primary }
+
+    Write-Host -NoNewline ("  " + $Script:Box.V + " ") -ForegroundColor $Script:Palette.Muted
+    Write-Host -NoNewline $keyPart -ForegroundColor $kColor
+    Write-Host -NoNewline ('.' * $dotsCount) -ForegroundColor $Script:Palette.Muted
+    Write-Host -NoNewline $v -ForegroundColor $vColor
+    Write-Host -NoNewline (" " + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
+    Write-Host ''
+}
+
+function Write-Box {
+    <#
+    .SYNOPSIS
+        Convenience wrapper: renders a full titled box from an array of
+        content lines. Useful for static dialogs without interactivity.
+    .EXAMPLE
+        Write-Box -Title 'HELLO' -Lines @('Welcome to the template.','')
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter()][string[]]$Lines = @()
+    )
+    Write-BoxTop -Title $Title
+    foreach ($l in $Lines) { Write-BoxLine -Text $l }
+    Write-BoxBottom
+}
+
 function Read-YesNo {
     param([string]$Prompt)
     $ans = (Read-Host $Prompt).Trim().ToLower()
@@ -358,25 +440,60 @@ function Write-ProgressBar {
     Write-Host $display -ForegroundColor $Script:Palette.Accent
 }
 
-$Script:SpinnerChars = @('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
-$Script:SpinnerIdx = 0
-
 function New-Spinner {
-    param([string]$Message = 'Working...')
-    $Script:SpinnerIdx = 0
-    return @{ Message = $Message; Started = (Get-Date) }
+    <#
+    .SYNOPSIS
+        Creates a spinner state object to be updated in a loop.
+    .PARAMETER Style
+        Frame set: Braille, Block, Classic, Geometric.
+    #>
+    [CmdletBinding()] param(
+        [string]$Label = 'Working',
+        [ValidateSet('Braille','Block','Classic','Geometric')][string]$Style = 'Braille'
+    )
+    $frames = switch ($Style) {
+        'Braille'   { @(([char]0x280B),([char]0x2819),([char]0x2839),([char]0x2838),([char]0x283C),([char]0x2834)) }
+        'Block'     { @(([char]0x2596),([char]0x2598),([char]0x259D),([char]0x2592)) }
+        'Classic'   { @('|','/','-','\') }
+        'Geometric' { @(([char]0x25E4),([char]0x25E5),([char]0x25E2),([char]0x25E3)) }
+    }
+    return [PSCustomObject]@{
+        Frames = $frames
+        Index  = 0
+        Label  = $Label
+        Top    = [Console]::CursorTop
+    }
 }
 
 function Update-Spinner {
-    param([hashtable]$Spinner)
-    $spin = $Script:SpinnerChars[$Script:SpinnerIdx % $Script:SpinnerChars.Count]
-    Write-Host ("`r  $spin $($Spinner.Message)") -ForegroundColor $Script:Palette.Accent -NoNewline
-    $Script:SpinnerIdx++
+    <#.SYNOPSIS Paints the next spinner frame in place.#>
+    [CmdletBinding()] param([Parameter(Mandatory)]$Spinner)
+    $frame = $Spinner.Frames[$Spinner.Index]
+    $Spinner.Index = ($Spinner.Index + 1) % $Spinner.Frames.Count
+    try { [Console]::SetCursorPosition(0, $Spinner.Top) } catch {}
+    $line = "  $frame $($Spinner.Label)...   "
+    Write-Host -NoNewline $line -ForegroundColor $Script:Palette.Accent
 }
 
 function Complete-Spinner {
-    param([hashtable]$Spinner, [string]$Status = 'Done')
-    Write-Host "`r  [+] $Status" -ForegroundColor $Script:Palette.Success
+    <#.SYNOPSIS Clears the spinner line and prints a final status message.#>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)]$Spinner,
+        [string]$FinalMessage,
+        [switch]$Success
+    )
+    try { [Console]::SetCursorPosition(0, $Spinner.Top) } catch {}
+    Write-Host -NoNewline (' ' * 80)
+    try { [Console]::SetCursorPosition(0, $Spinner.Top) } catch {}
+    if ($FinalMessage) {
+        if ($Success) {
+            Write-Host ("  [+] $FinalMessage") -ForegroundColor $Script:Palette.Success
+        } else {
+            Write-Host ("  [-] $FinalMessage") -ForegroundColor $Script:Palette.Danger
+        }
+    } else {
+        Write-Host ''
+    }
 }
 
 # About screen
@@ -582,7 +699,7 @@ function Install-Spicetify {
     try {
         $null = Invoke-WebRequest -UseBasicParsing -Uri $Script:SpicetifyInstallUrl | Invoke-Expression
         $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
-        Complete-Spinner $spinner 'Installed'
+        Complete-Spinner $spinner -FinalMessage 'Installed' -Success
         if (Test-SpicetifyInstalled) { Write-Ok 'Spicetify installed.'; return $true }
         else { Write-Err 'Installed but not on PATH.'; return $false }
     } catch { Write-Err $_.Exception.Message; return $false }
@@ -592,7 +709,7 @@ function Install-Marketplace {
     $spinner = New-Spinner 'Installing Marketplace...'
     try {
         $null = Invoke-WebRequest -UseBasicParsing -Uri $Script:MarketplaceInstallUrl | Invoke-Expression
-        Complete-Spinner $spinner 'Installed'
+        Complete-Spinner $spinner -FinalMessage 'Installed' -Success
         Write-Ok 'Marketplace installed.'; return $true
     } catch { Write-Err $_.Exception.Message; return $false }
 }
@@ -611,7 +728,7 @@ function Install-SpotifyDesktop {
     $installer = Join-Path $env:TEMP 'SpotifySetup.exe'
     try { Invoke-WebRequest -UseBasicParsing -Uri $Script:SpotifyInstallerUrl -OutFile $installer -ErrorAction Stop }
     catch { Write-Err $_.Exception.Message; return $false }
-    Complete-Spinner $spinner 'Downloaded'
+    Complete-Spinner $spinner -FinalMessage 'Downloaded' -Success
 
     Write-Step 'Installing Spotify Desktop (this may take a while)...'
     try { Start-Process -FilePath $installer -Wait -ErrorAction Stop | Out-Null }
@@ -621,7 +738,7 @@ function Install-SpotifyDesktop {
     $maxWait = 60; $waited = 0
     while (-not (Test-SpotifyDesktopInstalled) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
     if (-not (Test-SpotifyDesktopInstalled)) { Write-Err 'Spotify Desktop did not install.'; return $false }
-    Complete-Spinner $spinner 'Installed'
+    Complete-Spinner $spinner -FinalMessage 'Installed' -Success
 
     if (-not (Test-SpotifyHasBeenOpened)) {
         $spinner = New-Spinner 'Opening Spotify to initialize...'
@@ -630,7 +747,7 @@ function Install-SpotifyDesktop {
             try { Start-Process -FilePath $exe | Out-Null } catch {}
             $maxWait = 30; $waited = 0
             while (-not (Test-SpotifyHasBeenOpened) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
-            if (Test-SpotifyHasBeenOpened) { Complete-Spinner $spinner 'Initialized' }
+            if (Test-SpotifyHasBeenOpened) { Complete-Spinner $spinner -FinalMessage 'Initialized' -Success }
             else { Write-Warn 'Open Spotify manually, log in, close it, then re-run.' }
         }
     }
@@ -680,7 +797,7 @@ function Invoke-Upgrade {
     try {
         $null = Invoke-WebRequest -UseBasicParsing -Uri $Script:SpicetifyInstallUrl | Invoke-Expression
         $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
-        Complete-Spinner $spinner 'Upgraded'
+        Complete-Spinner $spinner -FinalMessage 'Upgraded' -Success
         $v = Get-SpicetifyVersion
         Write-Ok "Spicetify: $v"
     } catch { Write-Err $_.Exception.Message }
@@ -692,7 +809,7 @@ function Invoke-MarketplaceInstall {
     if (-not (Test-SpicetifyInstalled)) { Write-Warn 'Spicetify not installed.'; Read-Host '  Press ENTER' | Out-Null; return }
     $spinner = New-Spinner 'Installing Marketplace...'
     $result = Install-Marketplace
-    Complete-Spinner $spinner 'Done'
+    Complete-Spinner $spinner -FinalMessage 'Done' -Success
     Read-Host '  Press ENTER' | Out-Null
 }
 
