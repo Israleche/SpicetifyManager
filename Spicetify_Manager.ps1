@@ -578,19 +578,21 @@ function Repair-SpicetifyPaths {
 
 # Install Spicetify
 function Install-Spicetify {
-    Write-Step 'Installing Spicetify CLI...'
+    $spinner = New-Spinner 'Installing Spicetify CLI...'
     try {
         $null = Invoke-WebRequest -UseBasicParsing -Uri $Script:SpicetifyInstallUrl | Invoke-Expression
         $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
+        Complete-Spinner $spinner 'Installed'
         if (Test-SpicetifyInstalled) { Write-Ok 'Spicetify installed.'; return $true }
         else { Write-Err 'Installed but not on PATH.'; return $false }
     } catch { Write-Err $_.Exception.Message; return $false }
 }
 
 function Install-Marketplace {
-    Write-Step 'Installing Marketplace...'
+    $spinner = New-Spinner 'Installing Marketplace...'
     try {
         $null = Invoke-WebRequest -UseBasicParsing -Uri $Script:MarketplaceInstallUrl | Invoke-Expression
+        Complete-Spinner $spinner 'Installed'
         Write-Ok 'Marketplace installed.'; return $true
     } catch { Write-Err $_.Exception.Message; return $false }
 }
@@ -605,28 +607,30 @@ function Install-SpotifyDesktop {
             ForEach-Object { try { Remove-AppxPackage -Package $_.PackageFullName -ErrorAction SilentlyContinue } catch {} }
     } catch {}
 
-    Write-Step 'Downloading Spotify Desktop...'
+    $spinner = New-Spinner 'Downloading Spotify Desktop...'
     $installer = Join-Path $env:TEMP 'SpotifySetup.exe'
     try { Invoke-WebRequest -UseBasicParsing -Uri $Script:SpotifyInstallerUrl -OutFile $installer -ErrorAction Stop }
     catch { Write-Err $_.Exception.Message; return $false }
+    Complete-Spinner $spinner 'Downloaded'
 
-    Write-Step 'Installing Spotify Desktop...'
+    Write-Step 'Installing Spotify Desktop (this may take a while)...'
     try { Start-Process -FilePath $installer -Wait -ErrorAction Stop | Out-Null }
     catch { Write-Err $_.Exception.Message; return $false }
 
+    $spinner = New-Spinner 'Verifying installation...'
     $maxWait = 60; $waited = 0
     while (-not (Test-SpotifyDesktopInstalled) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
     if (-not (Test-SpotifyDesktopInstalled)) { Write-Err 'Spotify Desktop did not install.'; return $false }
-    Write-Ok 'Spotify Desktop installed.'
+    Complete-Spinner $spinner 'Installed'
 
     if (-not (Test-SpotifyHasBeenOpened)) {
-        Write-Step 'Opening Spotify once to initialize prefs...'
+        $spinner = New-Spinner 'Opening Spotify to initialize...'
         $exe = Get-SpotifyExeCandidates | Select-Object -First 1
         if ($exe) {
             try { Start-Process -FilePath $exe | Out-Null } catch {}
             $maxWait = 30; $waited = 0
             while (-not (Test-SpotifyHasBeenOpened) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
-            if (Test-SpotifyHasBeenOpened) { Write-Ok 'Spotify initialized.' }
+            if (Test-SpotifyHasBeenOpened) { Complete-Spinner $spinner 'Initialized' }
             else { Write-Warn 'Open Spotify manually, log in, close it, then re-run.' }
         }
     }
@@ -672,10 +676,11 @@ function Invoke-FullRestore {
 
 function Invoke-Upgrade {
     Write-Banner
-    Write-Step 'Upgrading Spicetify CLI...'
+    $spinner = New-Spinner 'Upgrading Spicetify CLI...'
     try {
         $null = Invoke-WebRequest -UseBasicParsing -Uri $Script:SpicetifyInstallUrl | Invoke-Expression
         $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' + [Environment]::GetEnvironmentVariable('PATH','User')
+        Complete-Spinner $spinner 'Upgraded'
         $v = Get-SpicetifyVersion
         Write-Ok "Spicetify: $v"
     } catch { Write-Err $_.Exception.Message }
@@ -685,7 +690,9 @@ function Invoke-Upgrade {
 function Invoke-MarketplaceInstall {
     Write-Banner
     if (-not (Test-SpicetifyInstalled)) { Write-Warn 'Spicetify not installed.'; Read-Host '  Press ENTER' | Out-Null; return }
-    $null = Install-Marketplace
+    $spinner = New-Spinner 'Installing Marketplace...'
+    $result = Install-Marketplace
+    Complete-Spinner $spinner 'Done'
     Read-Host '  Press ENTER' | Out-Null
 }
 
@@ -941,6 +948,10 @@ function Show-MainMenu {
 
 # Entry point
 function Start-App {
+    if ($ShowAbout) {
+        Show-About
+        exit 0
+    }
     if (-not (Test-PowerShellVersion)) {
         Write-Err 'PowerShell 5.1+ required.'
         if (-not $Silent) { Read-Host '  ENTER' | Out-Null }
