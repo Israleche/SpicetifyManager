@@ -716,7 +716,7 @@ function Show-ThemesMenu {
             '3' { Write-Banner; $null = Invoke-Spicetify -Args @('config','extensions') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
             '4' { $name = Read-Host '  Extension name'; if ($name) { $null = Invoke-Spicetify -Args @('extension',$name); Write-Ok "$name enabled. Run [1] Auto." }; Read-Host '  Press ENTER' | Out-Null }
             '5' { Write-Banner; $null = Invoke-Spicetify -Args @('config','custom_apps') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
-            '6' { $null = Install-Marketplace; Read-Host '  Press ENTER' | Out-Null }
+            '6' { $null = Invoke-MarketplaceInstall }
             '0' { return }
             default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
         }
