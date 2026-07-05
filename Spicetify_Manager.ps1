@@ -287,6 +287,118 @@ function Read-YesNo {
     return ($ans -eq 'y' -or $ans -eq 'yes')
 }
 
+# ============================================================================
+# 7. ADVANCED UI: Interactive input & progress indicators
+# ============================================================================
+
+function Read-AnyKey {
+    param([string]$Prompt = '  Press any key to continue...')
+    Write-Host $Prompt -ForegroundColor $Script:Palette.Muted -NoNewline
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+    Write-Host ''
+}
+
+function Test-InteractiveConsole {
+    try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown,AllowCtrlC'); return $true } catch { return $false }
+}
+
+function Initialize-ConsoleSize {
+    try {
+        $rawUI = $Host.UI.RawUI
+        $currentSize = $rawUI.BufferSize
+        # Try to grow to 50 rows, wider buffer for scrollback
+        $rawUI.BufferSize = New-Object System.Management.Automation.Host.Size(120, 9999)
+        $rawUI.WindowSize = New-Object System.Management.Automation.Host.Size(100, 50)
+    } catch {
+        Write-Debug "Console resize failed: $($_.Exception.Message)"
+    }
+}
+
+function Read-MenuSelection {
+    param([string[]]$Items, [int]$DefaultIdx = 0, [string]$Prompt = 'Select')
+    Write-BoxTop $Prompt
+    $idx = $DefaultIdx
+    while ($true) {
+        Clear-Host
+        Write-BoxTop $Prompt
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $marker = if ($i -eq $idx) { '→ ' } else { '  ' }
+            $color = if ($i -eq $idx) { $Script:Palette.Accent } else { $Script:Palette.Primary }
+            Write-Host ($marker + $Items[$i]) -ForegroundColor $color
+        }
+        Write-BoxBottom
+        
+        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode
+        switch ($key) {
+            38 { $idx = ($idx - 1 + $Items.Count) % $Items.Count } # Up arrow
+            40 { $idx = ($idx + 1) % $Items.Count }                 # Down arrow
+            13 { return $idx }                                       # Enter
+            27 { return -1 }                                         # Esc
+        }
+    }
+}
+
+# Progress bar with 4 styles: Blocks, Dots, Arrow, Solid
+function Write-ProgressBar {
+    param(
+        [int]$Percent = 0,
+        [int]$Width = 30,
+        [ValidateSet('Blocks', 'Dots', 'Arrow', 'Solid')][string]$Style = 'Blocks',
+        [string]$Label = ''
+    )
+    $Percent = [Math]::Min(100, [Math]::Max(0, $Percent))
+    $filled = [int]($Width * $Percent / 100)
+    $empty  = $Width - $filled
+    
+    $barChar   = switch ($Style) { 'Blocks' { '█' }; 'Dots' { '●' }; 'Arrow' { '▶' }; 'Solid' { '▓' } }
+    $emptyChar = '░'
+    
+    $bar = ($barChar * $filled) + ($emptyChar * $empty)
+    $display = if ($Label) { "$Label [$bar] $Percent%" } else { "[$bar] $Percent%" }
+    Write-Host $display -ForegroundColor $Script:Palette.Accent
+}
+
+$Script:SpinnerChars = @('⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏')
+$Script:SpinnerIdx = 0
+
+function New-Spinner {
+    param([string]$Message = 'Working...')
+    $Script:SpinnerIdx = 0
+    return @{ Message = $Message; Started = (Get-Date) }
+}
+
+function Update-Spinner {
+    param([hashtable]$Spinner)
+    $spin = $Script:SpinnerChars[$Script:SpinnerIdx % $Script:SpinnerChars.Count]
+    Write-Host ("`r  $spin $($Spinner.Message)") -ForegroundColor $Script:Palette.Accent -NoNewline
+    $Script:SpinnerIdx++
+}
+
+function Complete-Spinner {
+    param([hashtable]$Spinner, [string]$Status = 'Done')
+    Write-Host "`r  [+] $Status" -ForegroundColor $Script:Palette.Success
+}
+
+# About screen
+function Show-About {
+    Clear-Host
+    Write-BoxTop 'ABOUT'
+    Write-BoxLine "Spicetify Manager v$Script:AppVersion"
+    Write-BoxLine "Author: $Script:AppAuthor"
+    Write-BoxLine ''
+    Write-BoxLine 'Professional Spotify + Spicetify CLI wrapper'
+    Write-BoxLine 'Manage themes, extensions, marketplace, & more'
+    Write-BoxLine ''
+    Write-BoxLine 'Modern TUI with persistent JSON settings'
+    Write-BoxLine 'Settings saved to: $HOME\.spicetify-manager'
+    Write-BoxLine ''
+    Write-BoxLine 'GitHub: github.com/Israleche/SpicetifyManager'
+    Write-BoxLine ''
+    Write-BoxLine 'License: MIT'
+    Write-BoxBottom
+    Read-AnyKey
+}
+
 # Fade-in effect for banner lines
 function Write-FadeIn {
     param(
@@ -831,41 +943,73 @@ function Show-MainMenu {
 function Start-App {
     if (-not (Test-PowerShellVersion)) {
         Write-Err 'PowerShell 5.1+ required.'
-        Read-Host '  ENTER' | Out-Null; exit 1
+        if (-not $Silent) { Read-Host '  ENTER' | Out-Null }
+        exit 1
     }
     if (Test-RunningAsAdmin) {
         Write-Err 'Do NOT run as Administrator.'
         Write-Host 'Spicetify refuses admin and Spotify shows a black window.' -ForegroundColor $Script:Palette.Warning
-        Read-Host '  ENTER' | Out-Null; exit 1
+        if (-not $Silent) { Read-Host '  ENTER' | Out-Null }
+        exit 1
     }
 
     if (-not (Test-SpicetifyInstalled)) {
-        Write-Banner
-        Write-Warn 'Spicetify is not installed.'
-        $ok = Read-YesNo '  Install it now? (y/n)'
-        if ($ok) { if (-not (Install-Spicetify)) { Write-Err 'Cannot continue.'; Read-Host '  ENTER' | Out-Null; exit 1 } }
-        else { exit 0 }
+        if ($Silent) {
+            Write-Step 'Silent mode: Installing Spicetify...'
+            if (-not (Install-Spicetify)) { Write-Err 'Cannot continue.'; exit 1 }
+        } else {
+            Write-Banner
+            Write-Warn 'Spicetify is not installed.'
+            $ok = Read-YesNo '  Install it now? (y/n)'
+            if ($ok) { if (-not (Install-Spicetify)) { Write-Err 'Cannot continue.'; Read-Host '  ENTER' | Out-Null; exit 1 } }
+            else { exit 0 }
+        }
     }
 
     if ($Script:Settings.AutoFixSpotify) {
         $state = Get-SpotifyState
         if ($state -ne 'desktop') {
-            Write-Banner
-            if ($state -eq 'store') { Write-Warn 'Store Spotify detected.' }
-            else { Write-Warn 'Spotify not detected.' }
-            $ok = Read-YesNo '  Install Desktop Spotify? (y/n)'
-            if ($ok) { $null = Install-SpotifyDesktop; if (Test-SpicetifyInstalled) { $null = Repair-SpicetifyPaths } }
+            if ($Silent) {
+                Write-Step 'Silent mode: Fixing Spotify installation...'
+                $null = Install-SpotifyDesktop
+                if (Test-SpicetifyInstalled) { $null = Repair-SpicetifyPaths }
+            } else {
+                Write-Banner
+                if ($state -eq 'store') { Write-Warn 'Store Spotify detected.' }
+                else { Write-Warn 'Spotify not detected.' }
+                $ok = Read-YesNo '  Install Desktop Spotify? (y/n)'
+                if ($ok) { $null = Install-SpotifyDesktop; if (Test-SpicetifyInstalled) { $null = Repair-SpicetifyPaths } }
+            }
         } elseif (-not (Test-SpotifyHasBeenOpened)) {
-            Write-Banner
-            Write-Warn 'Spotify never opened.'
-            Write-Step 'Opening Spotify to initialize...'
-            $exe = Get-SpotifyExeCandidates | Select-Object -First 1
-            if ($exe) { try { Start-Process -FilePath $exe | Out-Null } catch {} }
-            $maxWait = 30; $waited = 0
-            while (-not (Test-SpotifyHasBeenOpened) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
-            if (Test-SpotifyHasBeenOpened) { Write-Ok 'Initialized. Close it then continue.' }
-            Read-Host '  Press ENTER' | Out-Null
+            if ($Silent) {
+                Write-Step 'Silent mode: Initializing Spotify...'
+                $exe = Get-SpotifyExeCandidates | Select-Object -First 1
+                if ($exe) { try { Start-Process -FilePath $exe | Out-Null } catch {} }
+                $maxWait = 30; $waited = 0
+                while (-not (Test-SpotifyHasBeenOpened) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
+                if (Test-SpotifyHasBeenOpened) { Write-Ok 'Initialized' }
+            } else {
+                Write-Banner
+                Write-Warn 'Spotify never opened.'
+                Write-Step 'Opening Spotify to initialize...'
+                $exe = Get-SpotifyExeCandidates | Select-Object -First 1
+                if ($exe) { try { Start-Process -FilePath $exe | Out-Null } catch {} }
+                $maxWait = 30; $waited = 0
+                while (-not (Test-SpotifyHasBeenOpened) -and $waited -lt $maxWait) { Start-Sleep -Seconds 2; $waited += 2 }
+                if (Test-SpotifyHasBeenOpened) { Write-Ok 'Initialized. Close it then continue.' }
+                Read-Host '  Press ENTER' | Out-Null
+            }
         }
+    }
+
+    # Export settings before main menu
+    Export-Settings
+
+    if ($Silent) {
+        Write-Step 'Silent mode: Running auto...'
+        Invoke-AutoLaunch
+        Write-Ok 'Done.'
+        exit 0
     }
 
     Show-MainMenu
