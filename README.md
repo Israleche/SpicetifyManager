@@ -1,10 +1,22 @@
 <p align="center">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=1000&color=FF0000&center=true&vCenter=true&width=500&lines=SPICETIFY+MANAGER" alt="Spicetify Manager" />
+  <img src=\"https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=28&duration=3000&pause=1000&color=FF00FF&center=true&vCenter=true&width=500&lines=SPICETIFY+MANAGER\" alt=\"Spicetify Manager\" />
 </p>
 
-<p align="center">
-  <strong>A PowerShell control panel for Spicetify + Spotify Desktop.</strong>
+<p align=\"center\">
+  <strong>Modern TUI control panel for Spicetify + Spotify Desktop</strong><br/>
+  <sub>v2.0.0 — Redesigned with curved borders & improved aesthetics</sub>
 </p>
+
+---
+
+## ✨ What's New in v2.0.0
+
+- 🎨 **Modern curved borders** (╭─╮ style instead of ┌─┐)
+- 🎭 **Enhanced color palette** — Magenta logo, Cyan highlights for better accessibility
+- 📦 **L2 UTF-8 box-drawing** — Professional terminal UI
+- 🆕 **Info helper** for neutral informational messages
+- ⚙️ **Adaptive window width** for better terminal compatibility
+- ✅ **100% backward compatible** — All existing features unchanged
 
 ---
 
