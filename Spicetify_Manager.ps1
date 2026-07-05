@@ -2,29 +2,58 @@
 <#
 .SYNOPSIS
     Spicetify Manager — Interactive control panel for Spicetify + Spotify Desktop.
+
 .DESCRIPTION
     Comprehensive wrapper around Spicetify CLI with modern TUI. Manage themes,
     extensions, Marketplace, Spotify Desktop installation, backups, and repairs
     through an elegant interactive menu system.
+
+    Designed as a single-file deliverable: download the .ps1, run it,
+    pick an action, done. No manual steps. Persistent settings survive
+    across sessions in $HOME/.spicetify-manager/.
+
 .NOTES
     File Name      : Spicetify_Manager.ps1
-    Version        : 2.0.0
+    Project        : Spicetify Manager
+    Version        : 2.1.0
     Author         : Israleche
     License        : MIT
     Prerequisite   : PowerShell 5.1+ (Windows 10/11)
-    Encoding       : UTF-8 (BOM required for box-drawing chars on PS 5.1)
+    Encoding       : UTF-8 with BOM (required for box-drawing chars on PS 5.1)
+
+.EXAMPLE
+    .\Spicetify_Manager.ps1
+    Launches the interactive main menu.
+
+.EXAMPLE
+    .\Spicetify_Manager.ps1 -Silent
+    Runs the full auto-flow non-interactively.
+
+.EXAMPLE
+    .\Spicetify_Manager.ps1 -NoPersist
+    Runs without loading or saving the settings JSON file.
 #>
 
 [CmdletBinding()]
 param(
+    [switch]$Silent,
     [int]$ShowProgress = -1,
+    [int]$EnableDebug  = -1,
     [int]$AutoFix      = -1,
-    [int]$AutoOpen     = -1
+    [int]$AutoOpen     = -1,
+    [switch]$NoPersist,
+    [switch]$ShowAbout
 )
 
+# ============================================================================
+# 1. BOOTSTRAP: Encoding, error preferences, version detection
+# ============================================================================
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
 
+# Force UTF-8 on the console layer. The .ps1 file itself is saved as
+# UTF-8 with BOM so that Windows PowerShell 5.1 parses box-drawing chars
+# correctly (without BOM, PS 5.1 falls back to ANSI and corrupts them).
 try {
     $utf8 = New-Object System.Text.UTF8Encoding $false
     [Console]::OutputEncoding = $utf8
@@ -35,45 +64,116 @@ try {
 $PSDefaultParameterValues['Out-File:Encoding'] = 'utf8'
 try { $Host.UI.RawUI.WindowTitle = 'Spicetify Manager' } catch {}
 
-$Script:UserDir = Join-Path $env:APPDATA 'spicetify'
+# Detect PowerShell version (used for graceful feature toggling later)
+$Script:PSVersion = $PSVersionTable.PSVersion
+$Script:IsPS7     = $Script:PSVersion.Major -ge 7
+$Script:IsCore    = $Script:PSVersion.PSEdition -eq 'Core'
 
+# ============================================================================
+# 2. METADATA & PATHS
+# ============================================================================
+$Script:AppName      = 'Spicetify Manager'
+$Script:AppVersion   = '2.1.0'
+$Script:AppAuthor    = 'Israleche'
+$Script:ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $Script:ScriptDir) { $Script:ScriptDir = $PWD.Path }
+
+# Config lives at the USER'S ROOT ($HOME), not next to the script. This way
+# settings survive even if the .ps1 is moved or re-downloaded. A hidden
+# .spicetify-manager folder keeps the home directory tidy.
+$Script:AppDir       = Join-Path $HOME '.spicetify-manager'
+$Script:SettingsFile = Join-Path $Script:AppDir 'settings.json'
+$Script:BackupDir    = Join-Path $Script:AppDir 'backups'
+
+# Spicetify external URLs and paths
 $Script:SpicetifyInstallUrl   = 'https://raw.githubusercontent.com/spicetify/cli/main/install.ps1'
 $Script:MarketplaceInstallUrl = 'https://raw.githubusercontent.com/spicetify/marketplace/main/resources/install.ps1'
 $Script:SpotifyInstallerUrl   = 'https://download.scdn.co/SpotifySetup.exe'
+$Script:UserDir               = Join-Path $env:APPDATA 'spicetify'
 
-# Modern color palette: unified visual language
+# ============================================================================
+# 3. SETTINGS MANAGEMENT (JSON persistence)
+# ============================================================================
+$Script:Settings = [ordered]@{
+    ShowProgress      = $true
+    DebugMode         = $false
+    AutoFixSpotify    = $true
+    AutoOpenSpotify   = $true
+    LastUsed          = $null
+}
+
+function Import-Settings {
+    [CmdletBinding()] param()
+    if ($NoPersist) { return }
+    if (-not (Test-Path -LiteralPath $Script:SettingsFile)) { return }
+    try {
+        $json = Get-Content -LiteralPath $Script:SettingsFile -Raw -Encoding UTF8 |
+            ConvertFrom-Json
+        if ($null -ne $json.ShowProgress)    { $Script:Settings.ShowProgress    = [bool]$json.ShowProgress }
+        if ($null -ne $json.DebugMode)       { $Script:Settings.DebugMode       = [bool]$json.DebugMode }
+        if ($null -ne $json.AutoFixSpotify)  { $Script:Settings.AutoFixSpotify  = [bool]$json.AutoFixSpotify }
+        if ($null -ne $json.AutoOpenSpotify) { $Script:Settings.AutoOpenSpotify = [bool]$json.AutoOpenSpotify }
+        if ($null -ne $json.LastUsed)        { $Script:Settings.LastUsed        = [string]$json.LastUsed }
+    } catch {
+        Write-Debug "Settings load failed: $($_.Exception.Message)"
+    }
+}
+
+function Export-Settings {
+    [CmdletBinding()] param()
+    if ($NoPersist) { return }
+    try {
+        # Make sure $HOME/.spicetify-manager exists before we try to write into it.
+        $parent = Split-Path -Parent $Script:SettingsFile
+        if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        $obj = [PSCustomObject]@{
+            ShowProgress    = $Script:Settings.ShowProgress
+            DebugMode       = $Script:Settings.DebugMode
+            AutoFixSpotify  = $Script:Settings.AutoFixSpotify
+            AutoOpenSpotify = $Script:Settings.AutoOpenSpotify
+            LastUsed        = $Script:Settings.LastUsed
+        }
+        $obj | ConvertTo-Json -Depth 5 |
+            Set-Content -LiteralPath $Script:SettingsFile -Encoding UTF8
+    } catch {
+        Write-Debug "Settings save failed: $($_.Exception.Message)"
+    }
+}
+
+# Load settings at startup
+Import-Settings
+
+# Apply parameter overrides (allow runtime to override persisted settings)
+if ($ShowProgress -ge 0) { $Script:Settings.ShowProgress = [bool]$ShowProgress }
+if ($EnableDebug  -ge 0) { $Script:Settings.DebugMode    = [bool]$EnableDebug }
+if ($AutoFix      -ge 0) { $Script:Settings.AutoFixSpotify      = [bool]$AutoFix }
+if ($AutoOpen     -ge 0) { $Script:Settings.AutoOpenSpotify     = [bool]$AutoOpen }
+
+# ============================================================================
+# 4. COLOR PALETTE & BOX-DRAWING GLYPHS
+# ============================================================================
+# Single source of truth for every color and border glyph used in the UI.
+# Tweak these tables to re-skin the whole script without touching rendering
+# functions. All glyphs are referenced by code point so the source file
+# remains pure ASCII (portable across encodings).
 $Script:Palette = @{
     Logo    = 'Magenta'    # ASCII banner
-    Primary = 'White'      # Regular text
-    Muted   = 'DarkGray'   # Borders, dividers
-    Accent  = 'Cyan'       # Highlights, key labels
-    On      = 'Green'      # Active state
-    Off     = 'DarkGray'   # Inactive state
-    Success = 'Green'      # [+] success
-    Warning = 'Yellow'     # [!] warning
-    Danger  = 'Red'        # [x] error
-    Info    = 'Cyan'       # [i] info
+    Primary = 'White'      # Regular text inside frames
+    Muted   = 'DarkGray'   # Borders, dividers, secondary traces
+    Accent  = 'Cyan'       # Highlights, key labels, focused items
+    On      = 'Green'      # Active / affirmative state
+    Off     = 'DarkGray'   # Inactive / off state
+    Success = 'Green'      # [+] success messages
+    Warning = 'Yellow'     # [!] warning messages
+    Danger  = 'Red'        # [x] error messages
+    Info    = 'Cyan'       # [i] informational messages
     Prompt  = 'White'      # Input prompts
 }
 
-# Session-only settings (no file persistence)
-$Script:ShowCommandProgress = $true
-$Script:AutoFixSpotify      = $true
-$Script:AutoOpenSpotify     = $true
-
-# Apply param overrides
-if ($ShowProgress -ge 0) { $Script:ShowCommandProgress = [bool]$ShowProgress }
-if ($AutoFix      -ge 0) { $Script:AutoFixSpotify      = [bool]$AutoFix }
-if ($AutoOpen     -ge 0) { $Script:AutoOpenSpotify     = [bool]$AutoOpen }
-
-# UI helpers: inline status markers (convention: 2 spaces indent + 3-char bracket)
-function Write-Step { param([string]$Text) Write-Host ("  > $Text") -ForegroundColor $Script:Palette.Muted }
-function Write-Ok   { param([string]$Text) Write-Host ("  [+] $Text") -ForegroundColor $Script:Palette.Success }
-function Write-Warn { param([string]$Text) Write-Host ("  [!] $Text") -ForegroundColor $Script:Palette.Warning }
-function Write-Err  { param([string]$Text) Write-Host ("  [x] $Text") -ForegroundColor $Script:Palette.Danger }
-function Write-Info { param([string]$Text) Write-Host ("  [i] $Text") -ForegroundColor $Script:Palette.Info }
-
-# Modern curved box-drawing glyphs (L2 UTF-8 standard)
+# Modern curved box-drawing set (compatible with L2/L3 terminals).
+# Stored as [string] (not [char]) so the '*' repeat operator works directly.
 $Script:Box = @{
     TopLeft  = [string][char]0x256D   # ╭
     TopRight = [string][char]0x256E   # ╮
@@ -84,6 +184,48 @@ $Script:Box = @{
     CrossL   = [string][char]0x251C   # ├
     CrossR   = [string][char]0x2524   # ┤
 }
+
+# ============================================================================
+# 5. UI HELPERS: Inline status markers
+# ============================================================================
+# Convention: every status helper indents 2 spaces and uses a 3-char bracket
+# marker so visual scanning is consistent across the whole script.
+function Write-Step {
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Text)
+    Write-Host ("  > $Text") -ForegroundColor $Script:Palette.Muted
+}
+
+function Write-Ok {
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Text)
+    Write-Host ("  [+] $Text") -ForegroundColor $Script:Palette.Success
+}
+
+function Write-Warn {
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Text)
+    Write-Host ("  [!] $Text") -ForegroundColor $Script:Palette.Warning
+}
+
+function Write-Err {
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Text)
+    Write-Host ("  [x] $Text") -ForegroundColor $Script:Palette.Danger
+}
+
+function Write-Info {
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Text)
+    Write-Host ("  [i] $Text") -ForegroundColor $Script:Palette.Info
+}
+
+function Write-Log {
+    [CmdletBinding()] param([Parameter(Mandatory)][string]$Text)
+    if ($Script:Settings.DebugMode) {
+        $ts = (Get-Date).ToString('HH:mm:ss')
+        Write-Host ("  [LOG $ts] $Text") -ForegroundColor DarkGray
+    }
+}
+
+# ============================================================================
+# 6. BOX RENDERING: Modern curved borders with adaptive width
+# ============================================================================
 
 $Script:BoxWidth = 62
 
@@ -122,10 +264,14 @@ function Write-BoxLine {
         if ($lastSpace -gt 20) { $chunk = $t.Substring(0, $lastSpace); $t = $t.Substring($lastSpace + 1) }
         else { $t = $t.Substring($inner) }
         $pad = $inner - $chunk.Length
-        Write-Host ("  " + $Script:Box.V + " " + $chunk + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Primary
+        Write-Host (
+            "  " + $Script:Box.V + " " + $chunk + (' ' * $pad) + " " + $Script:Box.V
+        ) -ForegroundColor $Script:Palette.Primary
     }
     $pad = $inner - $t.Length
-    Write-Host ("  " + $Script:Box.V + " " + $t + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Primary
+    Write-Host (
+        "  " + $Script:Box.V + " " + $t + (' ' * $pad) + " " + $Script:Box.V
+    ) -ForegroundColor $Script:Palette.Primary
 }
 
 function Write-BoxBottom {
@@ -178,9 +324,9 @@ function Write-Banner {
 	Write-Host ''
     Write-Host '  ================================================================================' -ForegroundColor $Script:Palette.Muted
 
-    $prog = if ($Script:ShowCommandProgress) { 'ON' } else { 'OFF' }
-    $fix  = if ($Script:AutoFixSpotify)      { 'ON' } else { 'OFF' }
-    $open = if ($Script:AutoOpenSpotify)     { 'ON' } else { 'OFF' }
+    $prog = if ($Script:Settings.ShowProgress) { 'ON' } else { 'OFF' }
+    $fix  = if ($Script:Settings.AutoFixSpotify)      { 'ON' } else { 'OFF' }
+    $open = if ($Script:Settings.AutoOpenSpotify)     { 'ON' } else { 'OFF' }
 
     Write-Host -NoNewline '  progress:' -ForegroundColor $Script:Palette.Muted
     if ($prog -eq 'ON') { Write-Host -NoNewline $prog -ForegroundColor $Script:Palette.On }
@@ -277,7 +423,7 @@ function Stop-SpotifyProcess {
 }
 
 function Start-SpotifyProcess {
-    if (-not $Script:AutoOpenSpotify) { return }
+    if (-not $Script:Settings.AutoOpenSpotify) { return }
     $exe = Get-SpotifyExeCandidates | Select-Object -First 1
     if ($exe) {
         Write-Step 'Opening Spotify...'
@@ -289,12 +435,12 @@ function Start-SpotifyProcess {
 function Invoke-Spicetify {
     param([Parameter(Mandatory)][string[]]$Args, [switch]$AllowFailure, [switch]$Quiet)
     $cmd = "spicetify $($Args -join ' ')"
-    if (-not $Quiet -and $Script:ShowCommandProgress) {
+    if (-not $Quiet -and $Script:Settings.ShowProgress) {
         Write-Host "  > $cmd" -ForegroundColor $Script:Palette.Muted
     }
     try {
         $out = & spicetify @Args 2>&1 | Out-String
-        if (-not $Quiet -and $Script:ShowCommandProgress -and $out.Trim()) {
+        if (-not $Quiet -and $Script:Settings.ShowProgress -and $out.Trim()) {
             Write-Host $out -ForegroundColor DarkGray
         }
         return @{ Success = $true; Output = $out }
@@ -495,9 +641,9 @@ function Show-SettingsMenu {
         Write-BoxBottom
         $c = Read-Host '  Choose'
         switch ($c) {
-            '1' { $Script:ShowCommandProgress = -not $Script:ShowCommandProgress; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
-            '2' { $Script:AutoFixSpotify = -not $Script:AutoFixSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
-            '3' { $Script:AutoOpenSpotify = -not $Script:AutoOpenSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
+            '1' { $Script:Settings.ShowProgress = -not $Script:Settings.ShowProgress; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
+            '2' { $Script:Settings.AutoFixSpotify = -not $Script:Settings.AutoFixSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
+            '3' { $Script:Settings.AutoOpenSpotify = -not $Script:Settings.AutoOpenSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
             '0' { return }
             default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
         }
@@ -701,7 +847,7 @@ function Start-App {
         else { exit 0 }
     }
 
-    if ($Script:AutoFixSpotify) {
+    if ($Script:Settings.AutoFixSpotify) {
         $state = Get-SpotifyState
         if ($state -ne 'desktop') {
             Write-Banner
