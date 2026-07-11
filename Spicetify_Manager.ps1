@@ -721,11 +721,11 @@ function Show-About {
     Read-AnyKey
 }
 
-# Fade-in effect for banner lines
+# Fade-in effect for banner lines (instant, no delay to avoid flickering)
 function Write-FadeIn {
     param(
         [Parameter(Mandatory)][string[]]$Lines,
-        [int]$DelayMs = 50,
+        [int]$DelayMs = 0,
         [string]$Color = 'Red'
     )
     foreach ($line in $Lines) {
@@ -736,9 +736,13 @@ function Write-FadeIn {
 
 # Banner
 function Write-Banner {
-    Clear-Host
-    Write-Host ''
+    # Use cursor positioning instead of Clear-Host to avoid flickering
+    try { [Console]::SetCursorPosition(0, 0) } catch {}
+    
     $bar = '  ' + ([string]$Script:Box.H * 78)
+    
+    # Write banner lines at specific positions
+    Write-Host ''
     Write-Host $bar -ForegroundColor $Script:Palette.Muted
     Write-Host ''
 
@@ -1361,7 +1365,6 @@ function Show-HelpTopic {
 # Main menu
 function Show-MainMenu {
     while ($true) {
-        Write-Banner
         $state = Get-SpotifyState
         if ($state -eq 'store') {
             Write-Warn 'Microsoft Store Spotify detected! Use option 9.'

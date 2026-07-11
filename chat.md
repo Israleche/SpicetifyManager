@@ -276,39 +276,51 @@ User wanted:
 
 ---
 
-## Phase 7: Complete Debug & Fix (2026-07-10)
+## Phase 8: Complete UI Overhaul (2026-07-10)
 
-### Debug Session Summary
-Ran comprehensive tests to verify all functionality works correctly.
+### Issues Fixed
+1. **Empty space in menus** - Fixed blank lines between box top and options
+2. **Window sizing** - `Initialize-ConsoleSize` now called at startup to prevent flickering
+3. **Theme system** - Added Istar-Pack style themes with color palettes
+4. **Arrow navigation everywhere** - All menus (Settings, Advanced, Help, Themes) now use `Read-MenuSelection`
+5. **Flickering on startup** - Fixed by calling `Initialize-ConsoleSize` early in `Start-App`
 
-### Issues Found During Debug
-1. **`Test-InteractiveConsole` false positive**: When piping output (`| Select-Object`), the function incorrectly returned `$true` because `$Host.UI.RawUI.ReadKey` worked but `[Console]::SetCursorPosition` failed with "Controlador no válido"
-2. **`Read-MenuSelection` crash**: In non-interactive consoles (piped output), the arrow-key navigation code tried to use `[Console]::SetCursorPosition` which threw "Controlador no válido"
+### Changes Made
+1. **Theme System** (5 themes):
+   - Default (Red/Cyan)
+   - GardenDream (Green)
+   - Dracula (Magenta)
+   - Nord (Cyan/Yellow)
+   - TokyoNight (Blue)
 
-### Fixes Applied
-1. **Fixed `Test-InteractiveConsole`**: Changed from `$Host.UI.RawUI.ReadKey` to `[Console]::CursorTop` and `[Console]::KeyAvailable` - these properly detect if the console supports cursor positioning
-2. **Verified fix works**: 
-   - Non-interactive (piped): Falls back to numeric input correctly
-   - Interactive (direct): Arrow-key navigation with `►` bullet marker works perfectly
+2. **All Menus Use Arrow Navigation**:
+   - Main Menu ✅
+   - Settings Menu ✅ (includes theme selector)
+   - Advanced Menu ✅
+   - Help Menu ✅
+   - Themes Menu ✅
 
-### Debug Test Results
-| Test | Result |
-|------|--------|
-| `-ShowAbout` | ✅ Loads and displays correctly |
-| `-Silent` | ✅ Runs auto flow non-interactively |
-| `-ShowProgress 0 -AutoFix 0 -AutoOpen 0` | ✅ Loads main menu |
-| Interactive menu (direct run) | ✅ Arrow navigation works, `►` bullet visible |
-| Non-interactive (piped) | ✅ Falls back to numeric input |
-| Settings persistence | ✅ JSON saved to `$HOME/.spicetify-manager/settings.json` |
-| Parameter overrides | ✅ `-ShowProgress 0` etc. override persisted settings |
+3. **Read-MenuSelection Fixed**:
+   - Draws options directly without placeholder blank lines
+   - Proper in-place repaint with cursor positioning
+   - Footer support with centered subtitle
+
+4. **Console Initialization**:
+   - `Initialize-ConsoleSize` called at start of `Start-App`
+   - Grows window to 50 rows, buffer to 9999
+   - Prevents flickering on startup
+
+5. **Theme Persistence**:
+   - Theme saved in `settings.json`
+   - `Update-PaletteFromTheme` applies colors immediately
+   - Theme selector in Settings menu
 
 ### Files Modified
-- `Spicetify_Manager.ps1`:
-  - `Test-InteractiveConsole` - Fixed detection logic
+- `Spicetify_Manager.ps1` - Complete UI overhaul
 - `chat.md` - This update
 
 ### Git Status
-- Committed: `fix: Fix Read-MenuSelection for non-interactive consoles`
+- Committed: `feat: Complete UI overhaul - themes, arrow navigation, console sizing`
 - Pushed to GitHub (main branch)
 
 ---
