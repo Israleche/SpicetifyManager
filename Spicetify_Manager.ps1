@@ -381,7 +381,14 @@ function Read-AnyKey {
 }
 
 function Test-InteractiveConsole {
-    try { $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown,AllowCtrlC'); return $true } catch { return $false }
+    try {
+        # Check if we have a valid console with cursor position support
+        $null = [Console]::CursorTop
+        $null = [Console]::KeyAvailable
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Initialize-ConsoleSize {
@@ -444,14 +451,22 @@ function Read-MenuSelection {
     $drawOption = {
         param($index, $isSelected)
         $row = $menuTop + $index
-        try { [Console]::SetCursorPosition(0, $row) } catch { return }
+        try {
+            [Console]::SetCursorPosition(0, $row)
+        } catch {
+            return
+        }
         $opt  = $Options[$index]
         $marker = if ($isSelected) { $Script:Box.Bullet } else { ' ' }
         $line  = " $marker  $opt"
         if ($line.Length -gt $inner) { $line = $line.Substring(0, $inner) }
         $pad = $inner - $line.Length
         Write-Host -NoNewline ('  ' + $Script:Box.V + ' ' + (' ' * $inner) + ' ' + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
-        try { [Console]::SetCursorPosition(0, $row) } catch { return }
+        try {
+            [Console]::SetCursorPosition(0, $row)
+        } catch {
+            return
+        }
         if ($isSelected) {
             Write-Host -NoNewline ("  " + $Script:Box.V + " ") -ForegroundColor $Script:Palette.Muted
             Write-Host -NoNewline $line -ForegroundColor $Script:Palette.Accent
