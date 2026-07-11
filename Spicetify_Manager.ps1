@@ -99,6 +99,7 @@ $Script:Settings = [ordered]@{
     DebugMode         = $false
     AutoFixSpotify    = $true
     AutoOpenSpotify   = $true
+    Theme             = 'Default'
     LastUsed          = $null
 }
 
@@ -113,6 +114,7 @@ function Import-Settings {
         if ($null -ne $json.DebugMode)       { $Script:Settings.DebugMode       = [bool]$json.DebugMode }
         if ($null -ne $json.AutoFixSpotify)  { $Script:Settings.AutoFixSpotify  = [bool]$json.AutoFixSpotify }
         if ($null -ne $json.AutoOpenSpotify) { $Script:Settings.AutoOpenSpotify = [bool]$json.AutoOpenSpotify }
+        if ($null -ne $json.Theme)           { $Script:Settings.Theme           = [string]$json.Theme }
         if ($null -ne $json.LastUsed)        { $Script:Settings.LastUsed        = [string]$json.LastUsed }
     } catch {
         Write-Debug "Settings load failed: $($_.Exception.Message)"
@@ -133,6 +135,7 @@ function Export-Settings {
             DebugMode       = $Script:Settings.DebugMode
             AutoFixSpotify  = $Script:Settings.AutoFixSpotify
             AutoOpenSpotify = $Script:Settings.AutoOpenSpotify
+            Theme           = $Script:Settings.Theme
             LastUsed        = $Script:Settings.LastUsed
         }
         $obj | ConvertTo-Json -Depth 5 |
@@ -158,19 +161,105 @@ if ($AutoOpen     -ge 0) { $Script:Settings.AutoOpenSpotify     = [bool]$AutoOpe
 # Tweak these tables to re-skin the whole script without touching rendering
 # functions. All glyphs are referenced by code point so the source file
 # remains pure ASCII (portable across encodings).
-$Script:Palette = @{
-    Logo    = 'Red'        # ASCII banner
-    Primary = 'White'      # Regular text inside frames
-    Muted   = 'DarkGray'   # Borders, dividers, secondary traces
-    Accent  = 'Cyan'       # Highlights, key labels, focused items
-    On      = 'Green'      # Active / affirmative state
-    Off     = 'DarkGray'   # Inactive / off state
-    Success = 'Green'      # [+] success messages
-    Warning = 'Yellow'     # [!] warning messages
-    Danger  = 'Red'        # [x] error messages
-    Info    = 'Cyan'       # [i] informational messages
-    Prompt  = 'White'      # Input prompts
+
+# Theme definitions (Istar-Pack style)
+$Script:Themes = @{
+    'Default' = @{
+        Name        = 'Default'
+        Logo        = 'Red'
+        Primary     = 'White'
+        Muted       = 'DarkGray'
+        Accent      = 'Cyan'
+        On          = 'Green'
+        Off         = 'DarkGray'
+        Success     = 'Green'
+        Warning     = 'Yellow'
+        Danger      = 'Red'
+        Info        = 'Cyan'
+        Prompt      = 'White'
+    }
+    'GardenDream' = @{
+        Name        = "Garden's Dream"
+        Logo        = 'Green'
+        Primary     = 'White'
+        Muted       = 'DarkGray'
+        Accent      = 'Green'
+        On          = 'Green'
+        Off         = 'DarkGray'
+        Success     = 'Green'
+        Warning     = 'Yellow'
+        Danger      = 'Red'
+        Info        = 'Cyan'
+        Prompt      = 'White'
+    }
+    'Dracula' = @{
+        Name        = 'Dracula'
+        Logo        = 'Magenta'
+        Primary     = 'White'
+        Muted       = 'DarkGray'
+        Accent      = 'Magenta'
+        On          = 'Green'
+        Off         = 'DarkGray'
+        Success     = 'Green'
+        Warning     = 'Yellow'
+        Danger      = 'Red'
+        Info        = 'Cyan'
+        Prompt      = 'White'
+    }
+    'Nord' = @{
+        Name        = 'Nord'
+        Logo        = 'Cyan'
+        Primary     = 'White'
+        Muted       = 'DarkGray'
+        Accent      = 'Cyan'
+        On          = 'Green'
+        Off         = 'DarkGray'
+        Success     = 'Green'
+        Warning     = 'Yellow'
+        Danger      = 'Red'
+        Info        = 'Cyan'
+        Prompt      = 'White'
+    }
+    'TokyoNight' = @{
+        Name        = 'Tokyo Night'
+        Logo        = 'Blue'
+        Primary     = 'White'
+        Muted       = 'DarkGray'
+        Accent      = 'Blue'
+        On          = 'Green'
+        Off         = 'DarkGray'
+        Success     = 'Green'
+        Warning     = 'Yellow'
+        Danger      = 'Red'
+        Info        = 'Cyan'
+        Prompt      = 'White'
+    }
 }
+
+# Current theme (loaded from settings)
+$Script:CurrentThemeName = 'Default'
+
+function Update-PaletteFromTheme {
+    $theme = $Script:Themes[$Script:CurrentThemeName]
+    if ($null -eq $theme) { $theme = $Script:Themes['Default'] }
+    $Script:Palette = @{
+        Logo    = $theme.Logo
+        Primary = $theme.Primary
+        Muted   = $theme.Muted
+        Accent  = $theme.Accent
+        On      = $theme.On
+        Off     = $theme.Off
+        Success = $theme.Success
+        Warning = $theme.Warning
+        Danger  = $theme.Danger
+        Info    = $theme.Info
+        Prompt  = $theme.Prompt
+    }
+}
+
+# Apply theme from settings
+$Script:CurrentThemeName = $Script:Settings.Theme
+Update-PaletteFromTheme
 
 # Modern curved box-drawing set (compatible with L2/L3 terminals).
 # Stored as [string] (not [char]) so the '*' repeat operator works directly.
@@ -436,10 +525,34 @@ function Read-MenuSelection {
     Write-Banner
     Write-BoxTop -Title $Title
     $menuTop = [Console]::CursorTop
-    for ($i = 0; $i -lt $Options.Count; $i++) { Write-BoxLine '' }
+    
+    # Draw initial options directly (no placeholders)
+    for ($i = 0; $i -lt $Options.Count; $i++) {
+        $opt = $Options[$i]
+        $marker = if ($i -eq $selected) { $Script:Box.Bullet } else { ' ' }
+        $line = " $marker  $opt"
+        $inner = $Script:BoxWidth - 4
+        if ($line.Length -gt $inner) { $line = $line.Substring(0, $inner) }
+        $pad = $inner - $line.Length
+        if ($i -eq $selected) {
+            Write-Host ("  " + $Script:Box.V + " " + $line + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Accent
+        } else {
+            Write-Host ("  " + $Script:Box.V + " " + $line + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Primary
+        }
+    }
+    
     if ($Footer) {
         Write-BoxSeparator
-        Write-BoxLine ''
+        $inner = $Script:BoxWidth - 4
+        $t = $Footer
+        if ($t.Length -gt ($inner - 6)) { $t = $t.Substring(0, $inner - 6) }
+        $decoLen  = $inner - $t.Length - 2
+        $sideLen  = [int][Math]::Floor($decoLen / 2)
+        $rightLen = $decoLen - $sideLen
+        $content = ($Script:Box.H * $sideLen) + ' ' + $t + ' ' + ($Script:Box.H * $rightLen)
+        $pad = $inner - $content.Length
+        if ($pad -lt 0) { $content = $content.Substring(0, $inner); $pad = 0 }
+        Write-Host ("  " + $Script:Box.V + " " + $content + (' ' * $pad) + " " + $Script:Box.V) -ForegroundColor $Script:Palette.Accent
     }
     Write-BoxBottom
     $footerRow = [Console]::CursorTop - 1
@@ -451,22 +564,14 @@ function Read-MenuSelection {
     $drawOption = {
         param($index, $isSelected)
         $row = $menuTop + $index
-        try {
-            [Console]::SetCursorPosition(0, $row)
-        } catch {
-            return
-        }
+        try { [Console]::SetCursorPosition(0, $row) } catch { return }
         $opt  = $Options[$index]
         $marker = if ($isSelected) { $Script:Box.Bullet } else { ' ' }
         $line  = " $marker  $opt"
         if ($line.Length -gt $inner) { $line = $line.Substring(0, $inner) }
         $pad = $inner - $line.Length
         Write-Host -NoNewline ('  ' + $Script:Box.V + ' ' + (' ' * $inner) + ' ' + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
-        try {
-            [Console]::SetCursorPosition(0, $row)
-        } catch {
-            return
-        }
+        try { [Console]::SetCursorPosition(0, $row) } catch { return }
         if ($isSelected) {
             Write-Host -NoNewline ("  " + $Script:Box.V + " ") -ForegroundColor $Script:Palette.Muted
             Write-Host -NoNewline $line -ForegroundColor $Script:Palette.Accent
@@ -478,10 +583,6 @@ function Read-MenuSelection {
             Write-Host -NoNewline (' ' * $pad) -ForegroundColor $Script:Palette.Primary
             Write-Host -NoNewline (" " + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
         }
-    }
-
-    for ($i = 0; $i -lt $Options.Count; $i++) {
-        & $drawOption $i ($i -eq $selected)
     }
 
     try { [Console]::SetCursorPosition(0, $hintRow) } catch {}
@@ -1027,25 +1128,32 @@ function Invoke-MarketplaceInstall {
 function Show-ThemesMenu {
     while ($true) {
         Write-Banner
-        Write-BoxTop 'THEMES / EXTENSIONS / APPS'
-        Write-BoxLine '[1] List installed themes'
-        Write-BoxLine '[2] Apply a theme by name'
-        Write-BoxLine '[3] List extensions'
-        Write-BoxLine '[4] Enable extension'
-        Write-BoxLine '[5] List custom apps'
-        Write-BoxLine '[6] Install Marketplace'
-        Write-BoxLine '[0] Back'
-        Write-BoxBottom
-        $c = Read-Host '  Choose'
-        switch ($c) {
-            '1' { Write-Banner; $res = Invoke-Spicetify -Args @('config','current_theme') -AllowFailure -Quiet; Write-Host $res.Output; Read-Host '  Press ENTER' | Out-Null }
-            '2' { $name = Read-Host '  Theme name'; if ($name) { $null = Invoke-Spicetify -Args @('config','current_theme',$name); Write-Ok "Theme set to $name. Run [1] Auto to apply." }; Read-Host '  Press ENTER' | Out-Null }
-            '3' { Write-Banner; $null = Invoke-Spicetify -Args @('config','extensions') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
-            '4' { $name = Read-Host '  Extension name'; if ($name) { $null = Invoke-Spicetify -Args @('extension',$name); Write-Ok "$name enabled. Run [1] Auto." }; Read-Host '  Press ENTER' | Out-Null }
-            '5' { Write-Banner; $null = Invoke-Spicetify -Args @('config','custom_apps') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
-            '6' { $null = Invoke-MarketplaceInstall }
-            '0' { return }
-            default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+        $themeOptions = @(
+            'List installed themes'
+            'Apply a theme by name'
+            'List extensions'
+            'Enable extension'
+            'List custom apps'
+            'Install Marketplace'
+            'Back'
+        )
+        $idx = Read-MenuSelection -Title 'THEMES / EXTENSIONS / APPS' -Options $themeOptions -DefaultIndex 0
+        if ($idx -lt 0) { continue }
+        try {
+            switch ($idx) {
+                0 { Write-Banner; $res = Invoke-Spicetify -Args @('config','current_theme') -AllowFailure -Quiet; Write-Host $res.Output; Read-Host '  Press ENTER' | Out-Null }
+                1 { $name = Read-Host '  Theme name'; if ($name) { $null = Invoke-Spicetify -Args @('config','current_theme',$name); Write-Ok "Theme set to $name. Run [1] Auto to apply." }; Read-Host '  Press ENTER' | Out-Null }
+                2 { Write-Banner; $null = Invoke-Spicetify -Args @('config','extensions') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
+                3 { $name = Read-Host '  Extension name'; if ($name) { $null = Invoke-Spicetify -Args @('extension',$name); Write-Ok "$name enabled. Run [1] Auto." }; Read-Host '  Press ENTER' | Out-Null }
+                4 { Write-Banner; $null = Invoke-Spicetify -Args @('config','custom_apps') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
+                5 { $null = Invoke-MarketplaceInstall }
+                6 { return }
+                default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+            }
+        } catch {
+            Write-Host ''
+            Write-Err ('Error: ' + $_.Exception.Message)
+            Read-Host '  Press ENTER' | Out-Null
         }
     }
 }
@@ -1079,19 +1187,38 @@ function Show-Status {
 function Show-SettingsMenu {
     while ($true) {
         Write-Banner
-        Write-BoxTop 'SETTINGS'
-        Write-BoxLine '[1] Toggle command output'
-        Write-BoxLine '[2] Toggle auto-fix Spotify'
-        Write-BoxLine '[3] Toggle auto-open Spotify'
-        Write-BoxLine '[0] Back'
-        Write-BoxBottom
-        $c = Read-Host '  Choose'
-        switch ($c) {
-            '1' { $Script:Settings.ShowProgress = -not $Script:Settings.ShowProgress; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
-            '2' { $Script:Settings.AutoFixSpotify = -not $Script:Settings.AutoFixSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
-            '3' { $Script:Settings.AutoOpenSpotify = -not $Script:Settings.AutoOpenSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
-            '0' { return }
-            default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+        $settingsOptions = @(
+            'Toggle command output'
+            'Toggle auto-fix Spotify'
+            'Toggle auto-open Spotify'
+            'Change theme'
+            'Back'
+        )
+        $idx = Read-MenuSelection -Title 'SETTINGS' -Options $settingsOptions -DefaultIndex 0
+        if ($idx -lt 0) { continue }
+        try {
+            switch ($idx) {
+                0 { $Script:Settings.ShowProgress = -not $Script:Settings.ShowProgress; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
+                1 { $Script:Settings.AutoFixSpotify = -not $Script:Settings.AutoFixSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
+                2 { $Script:Settings.AutoOpenSpotify = -not $Script:Settings.AutoOpenSpotify; Write-Ok 'Toggled.'; Start-Sleep -Milliseconds 500 }
+                3 { 
+                    $themeOptions = $Script:Themes.Keys | Sort-Object
+                    $themeIdx = Read-MenuSelection -Title 'SELECT THEME' -Options $themeOptions -DefaultIndex 0
+                    if ($themeIdx -ge 0) {
+                        $Script:Settings.Theme = $themeOptions[$themeIdx]
+                        $Script:CurrentThemeName = $Script:Settings.Theme
+                        Update-PaletteFromTheme
+                        Write-Ok "Theme changed to $($Script:Settings.Theme)"
+                        Start-Sleep -Milliseconds 500
+                    }
+                }
+                4 { return }
+                default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+            }
+        } catch {
+            Write-Host ''
+            Write-Err ('Error: ' + $_.Exception.Message)
+            Read-Host '  Press ENTER' | Out-Null
         }
     }
 }
@@ -1100,23 +1227,30 @@ function Show-SettingsMenu {
 function Show-AdvancedMenu {
     while ($true) {
         Write-Banner
-        Write-BoxTop 'ADVANCED'
-        Write-BoxLine '[1] spicetify restore backup'
-        Write-BoxLine '[2] spicetify backup'
-        Write-BoxLine '[3] spicetify apply'
-        Write-BoxLine '[4] Open Spicetify config folder'
-        Write-BoxLine '[5] Repair Spicetify paths'
-        Write-BoxLine '[0] Back'
-        Write-BoxBottom
-        $c = Read-Host '  Choose'
-        switch ($c) {
-            '1' { Write-Banner; Stop-SpotifyProcess; $null = Invoke-Spicetify -Args @('restore','backup') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
-            '2' { Write-Banner; Stop-SpotifyProcess; $null = Invoke-Spicetify -Args @('backup'); Read-Host '  Press ENTER' | Out-Null }
-            '3' { Write-Banner; Stop-SpotifyProcess; $null = Invoke-Spicetify -Args @('apply'); Start-SpotifyProcess; Read-Host '  Press ENTER' | Out-Null }
-            '4' { Write-Banner; try { $res = Invoke-Spicetify -Args @('-c') -AllowFailure -Quiet; $path = $res.Output.Trim(); if ($path -and (Test-Path $path)) { Invoke-Item (Split-Path -Parent $path) } else { Invoke-Item $Script:UserDir } } catch { Write-Err $_.Exception.Message }; Read-Host '  Press ENTER' | Out-Null }
-            '5' { Write-Banner; $null = Repair-SpicetifyPaths; Read-Host '  Press ENTER' | Out-Null }
-            '0' { return }
-            default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+        $advancedOptions = @(
+            'spicetify restore backup'
+            'spicetify backup'
+            'spicetify apply'
+            'Open Spicetify config folder'
+            'Repair Spicetify paths'
+            'Back'
+        )
+        $idx = Read-MenuSelection -Title 'ADVANCED' -Options $advancedOptions -DefaultIndex 0
+        if ($idx -lt 0) { continue }
+        try {
+            switch ($idx) {
+                0 { Write-Banner; Stop-SpotifyProcess; $null = Invoke-Spicetify -Args @('restore','backup') -AllowFailure; Read-Host '  Press ENTER' | Out-Null }
+                1 { Write-Banner; Stop-SpotifyProcess; $null = Invoke-Spicetify -Args @('backup'); Read-Host '  Press ENTER' | Out-Null }
+                2 { Write-Banner; Stop-SpotifyProcess; $null = Invoke-Spicetify -Args @('apply'); Start-SpotifyProcess; Read-Host '  Press ENTER' | Out-Null }
+                3 { Write-Banner; try { $res = Invoke-Spicetify -Args @('-c') -AllowFailure -Quiet; $path = $res.Output.Trim(); if ($path -and (Test-Path $path)) { Invoke-Item (Split-Path -Parent $path) } else { Invoke-Item $Script:UserDir } } catch { Write-Err $_.Exception.Message }; Read-Host '  Press ENTER' | Out-Null }
+                4 { Write-Banner; $null = Repair-SpicetifyPaths; Read-Host '  Press ENTER' | Out-Null }
+                5 { return }
+                default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+            }
+        } catch {
+            Write-Host ''
+            Write-Err ('Error: ' + $_.Exception.Message)
+            Read-Host '  Press ENTER' | Out-Null
         }
     }
 }
@@ -1125,23 +1259,30 @@ function Show-AdvancedMenu {
 function Show-HelpMenu {
     while ($true) {
         Write-Banner
-        Write-BoxTop 'HELP & DOCS'
-        Write-BoxLine '[1] What is Spicetify?'
-        Write-BoxLine '[2] How this manager works'
-        Write-BoxLine '[3] First-time install guide'
-        Write-BoxLine '[4] Common problems & fixes'
-        Write-BoxLine '[5] Menu options explained'
-        Write-BoxLine '[0] Back'
-        Write-BoxBottom
-        $c = Read-Host '  Choose'
-        switch ($c) {
-            '1' { Show-HelpTopic 'whatis' }
-            '2' { Show-HelpTopic 'how' }
-            '3' { Show-HelpTopic 'install' }
-            '4' { Show-HelpTopic 'problems' }
-            '5' { Show-HelpTopic 'menu' }
-            '0' { return }
-            default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+        $helpOptions = @(
+            'What is Spicetify?'
+            'How this manager works'
+            'First-time install guide'
+            'Common problems & fixes'
+            'Menu options explained'
+            'Back'
+        )
+        $idx = Read-MenuSelection -Title 'HELP & DOCS' -Options $helpOptions -DefaultIndex 0
+        if ($idx -lt 0) { continue }
+        try {
+            switch ($idx) {
+                0 { Show-HelpTopic 'whatis' }
+                1 { Show-HelpTopic 'how' }
+                2 { Show-HelpTopic 'install' }
+                3 { Show-HelpTopic 'problems' }
+                4 { Show-HelpTopic 'menu' }
+                5 { return }
+                default { Write-Warn 'Invalid.'; Start-Sleep -Milliseconds 400 }
+            }
+        } catch {
+            Write-Host ''
+            Write-Err ('Error: ' + $_.Exception.Message)
+            Read-Host '  Press ENTER' | Out-Null
         }
     }
 }
@@ -1278,6 +1419,9 @@ function Show-MainMenu {
 
 # Entry point
 function Start-App {
+    # Initialize console size first
+    Initialize-ConsoleSize
+    
     if ($ShowAbout) {
         Show-About
         exit 0

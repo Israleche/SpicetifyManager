@@ -273,3 +273,54 @@ User wanted:
 - All UI uses **L2 UTF-8 box-drawing** (╭─╮, ╰─╯, ├─┤, ─)
 - Color palette: 11 colors (Logo, Primary, Muted, Accent, On, Off, Success, Warning, Danger, Info, Prompt)
 - Main menu uses **arrow-key navigation** with `►` bullet marker (Istar-Pack style)
+
+---
+
+## Phase 7: Complete Debug & Fix (2026-07-10)
+
+### Debug Session Summary
+Ran comprehensive tests to verify all functionality works correctly.
+
+### Issues Found During Debug
+1. **`Test-InteractiveConsole` false positive**: When piping output (`| Select-Object`), the function incorrectly returned `$true` because `$Host.UI.RawUI.ReadKey` worked but `[Console]::SetCursorPosition` failed with "Controlador no válido"
+2. **`Read-MenuSelection` crash**: In non-interactive consoles (piped output), the arrow-key navigation code tried to use `[Console]::SetCursorPosition` which threw "Controlador no válido"
+
+### Fixes Applied
+1. **Fixed `Test-InteractiveConsole`**: Changed from `$Host.UI.RawUI.ReadKey` to `[Console]::CursorTop` and `[Console]::KeyAvailable` - these properly detect if the console supports cursor positioning
+2. **Verified fix works**: 
+   - Non-interactive (piped): Falls back to numeric input correctly
+   - Interactive (direct): Arrow-key navigation with `►` bullet marker works perfectly
+
+### Debug Test Results
+| Test | Result |
+|------|--------|
+| `-ShowAbout` | ✅ Loads and displays correctly |
+| `-Silent` | ✅ Runs auto flow non-interactively |
+| `-ShowProgress 0 -AutoFix 0 -AutoOpen 0` | ✅ Loads main menu |
+| Interactive menu (direct run) | ✅ Arrow navigation works, `►` bullet visible |
+| Non-interactive (piped) | ✅ Falls back to numeric input |
+| Settings persistence | ✅ JSON saved to `$HOME/.spicetify-manager/settings.json` |
+| Parameter overrides | ✅ `-ShowProgress 0` etc. override persisted settings |
+
+### Files Modified
+- `Spicetify_Manager.ps1`:
+  - `Test-InteractiveConsole` - Fixed detection logic
+- `chat.md` - This update
+
+### Git Status
+- Committed: `fix: Fix Read-MenuSelection for non-interactive consoles`
+- Pushed to GitHub (main branch)
+
+---
+
+## Notes for Other AIs
+- The script is a **single-file deliverable** - download and run
+- Requires **PowerShell 5.1+** (Windows 10/11)
+- **UTF-8 with BOM** encoding required for box-drawing chars on PS 5.1
+- **Do NOT run as Administrator** - Spicetify refuses admin
+- Settings persist in `$HOME/.spicetify-manager/` (survives script re-download)
+- Architecture closely follows **Istar-Pack.ps1** patterns
+- All UI uses **L2 UTF-8 box-drawing** (╭─╮, ╰─╯, ├─┤, ─)
+- Color palette: 11 colors (Logo, Primary, Muted, Accent, On, Off, Success, Warning, Danger, Info, Prompt)
+- Main menu uses **arrow-key navigation** with `►` bullet marker (Istar-Pack style)
+- `Test-InteractiveConsole` uses `[Console]::CursorTop` and `[Console]::KeyAvailable` for reliable detection
