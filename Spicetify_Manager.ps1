@@ -645,6 +645,75 @@ function Get-SpotifyState {
 
 function Test-SpotifyHasBeenOpened { return [bool](Get-SpotifyPrefsCandidates | Select-Object -First 1) }
 
+function Test-SpicetifyInjected {
+    <#
+    .SYNOPSIS
+        Checks if Spicetify is properly injected into Spotify's XPUI.
+    .DESCRIPTION
+        Verifies that spicetify.css/js or spicetify-routes-* files exist
+        in the XPUI directory, indicating a successful apply.
+    #>
+    [CmdletBinding()] param()
+    $xpui = Join-Path $env:APPDATA 'Spotify\Apps\xpui'
+    if (-not (Test-Path $xpui)) { return $false }
+    $marker = Join-Path $xpui 'spicetify.css'
+    $routes = Get-ChildItem $xpui -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'spicetify-routes-*' }
+    return (Test-Path $marker) -or ($routes.Count -gt 0)
+}
+
+function Get-SpicetifyInjectionStatus {
+    <#
+    .SYNOPSIS
+        Returns detailed injection status for extensions and custom apps.
+    #>
+    [CmdletBinding()] param()
+    $spicetifyDir = Join-Path $env:APPDATA 'spicetify'
+    $xpui = Join-Path $env:APPDATA 'Spotify\Apps\xpui'
+
+    $status = [PSCustomObject]@{
+        Injected      = $false
+        Extensions    = @()
+        CustomApps    = @()
+        MissingExt    = @()
+        MissingApps   = @()
+    }
+
+    if (-not (Test-Path $xpui)) { return $status }
+
+    # Read config
+    $configPath = spicetify -c 2>$null
+    if (Test-Path $configPath) {
+        $config = Get-Content $configPath -Raw
+        $extMatch = [regex]::Match($config, 'extensions\s*=\s*([^\r\n]+)')
+        $appMatch = [regex]::Match($config, 'custom_apps\s*=\s*([^\r\n]+)')
+        if ($extMatch.Success) {
+            $status.Extensions = $extMatch.Groups[1].Value.Split('|') | Where-Object { $_.Trim() }
+        }
+        if ($appMatch.Success) {
+            $status.CustomApps = $appMatch.Groups[1].Value.Split('|') | Where-Object { $_.Trim() }
+        }
+    }
+
+    # Check physical files
+    $extDir = Join-Path $spicetifyDir 'Extensions'
+    foreach ($ext in $status.Extensions) {
+        if (-not (Test-Path (Join-Path $extDir $ext))) {
+            $status.MissingExt += $ext
+        }
+    }
+
+    $appsDir = Join-Path $spicetifyDir 'CustomApps'
+    foreach ($app in $status.CustomApps) {
+        if (-not (Test-Path (Join-Path $appsDir $app))) {
+            $status.MissingApps += $app
+        }
+    }
+
+    $status.Injected = Test-SpicetifyInjected
+    return $status
+}
+
 function Stop-SpotifyProcess {
     Write-Step 'Closing Spotify...'
     try { Get-Process -Name Spotify, SpotifyWebHelper -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
@@ -691,6 +760,42 @@ function Repair-SpicetifyPaths {
         $null = Invoke-Spicetify -Args @('config','prefs_path',$prefs) -AllowFailure -Quiet
         Write-Ok "prefs_path = $prefs"
     } else { Write-Warn 'No prefs file. Open Spotify once.' }
+
+    # Verify injection after path repair
+    $status = Get-SpicetifyInjectionStatus
+    if (-not $status.Injected) {
+        Write-Warn 'Spicetify not injected. Run Apply to fix.'
+    } elseif ($status.MissingExt.Count -gt 0 -or $status.MissingApps.Count -gt 0) {
+        Write-Warn "Missing files: $($status.MissingExt -join ', ') $($status.MissingApps -join ', ')"
+        Write-Step 'Run Apply to refresh.'
+    } else {
+        Write-Ok 'Spicetify injected and all components present.'
+    }
+}
+
+function Test-SpicetifyComponents {
+    <#
+    .SYNOPSIS
+        Verifies that all configured extensions and apps are physically present.
+    #>
+    [CmdletBinding()] param()
+    $status = Get-SpicetifyInjectionStatus
+    Write-BoxTop 'SPICETIFY STATUS'
+    Write-BoxLine "Injected: $(if ($status.Injected) { 'YES' } else { 'NO' })"
+    Write-BoxLine ''
+    Write-BoxLine "Extensions ($($status.Extensions.Count)):"
+    foreach ($ext in $status.Extensions) {
+        $ok = -not ($status.MissingExt -contains $ext)
+        Write-BoxLine "  $(if ($ok) { '[+]' } else { '[x]' }) $ext"
+    }
+    Write-BoxLine ''
+    Write-BoxLine "Custom Apps ($($status.CustomApps.Count)):"
+    foreach ($app in $status.CustomApps) {
+        $ok = -not ($status.MissingApps -contains $app)
+        Write-BoxLine "  $(if ($ok) { '[+]' } else { '[x]' }) $app"
+    }
+    Write-BoxBottom
+    Read-AnyKey
 }
 
 # Install Spicetify
@@ -1031,6 +1136,7 @@ function Show-MainMenu {
         Write-BoxLine '[7] Open Spicetify config folder'
         Write-BoxLine '[8] View status & info'
         Write-BoxLine '[9] Install / fix desktop Spotify'
+        Write-BoxLine '[V] Verify Spicetify components'
         Write-BoxLine '[S] Settings'
         Write-BoxLine '[A] Advanced options'
         Write-BoxLine '[H] Help & documentation'
@@ -1049,6 +1155,7 @@ function Show-MainMenu {
                 '7' { Write-Banner; try { $res = Invoke-Spicetify -Args @('-c') -AllowFailure -Quiet; $path = $res.Output.Trim(); if ($path -and (Test-Path $path)) { Invoke-Item (Split-Path -Parent $path) } else { Invoke-Item $Script:UserDir } } catch { Write-Err $_.Exception.Message }; Read-Host '  Press ENTER' | Out-Null }
                 '8' { Show-Status }
                 '9' { Write-Banner; Write-Step 'Checking Spotify...'; $null = Install-SpotifyDesktop; if (Test-SpicetifyInstalled) { $null = Repair-SpicetifyPaths }; Read-Host '  Press ENTER' | Out-Null }
+                'V' { Test-SpicetifyComponents }
                 'S' { Show-SettingsMenu }
                 'A' { Show-AdvancedMenu }
                 'H' { Show-HelpMenu }

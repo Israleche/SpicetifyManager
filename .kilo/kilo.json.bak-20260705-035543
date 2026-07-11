@@ -1,0 +1,12 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "git": {
+      "type": "local",
+      "command": ["uvx", "mcp-server-git", "--repository", "."]
+    }
+  },
+  "instructions": {
+    "file_path": "C:\\Users\\Isra\\Documents\\GitHub\\Format Example\\Code Format Standards.md"
+  }
+}

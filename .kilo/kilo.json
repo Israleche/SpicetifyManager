@@ -1,0 +1,17 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "git": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "mcp-server-git",
+        "--repository",
+        "."
+      ]
+    }
+  },
+  "instructions": [
+    "Follow the Istar Code Format Standards defined in C:\\Users\\Isra\\Documents\\GitHub\\Format Example. Before writing ANY code, read: 1) Format Example.ps1, 2) ENCYCLOPEDIA_TUI.md, 3) ABECEDARIO_ASCII.txt, 4) Istar-Pack.ps1. Match indentation, comments, naming, structure, error handling, headers/footers EXACTLY. Your Format Example files OVERRIDE everything else."
+  ]
+}

@@ -163,6 +163,61 @@ d19b395 (tag: v2.0.0) feat: v2.0.0 - Redesign with modern TUI curved borders and
 
 ---
 
+## Phase 5: Spicetify Injection Fix (2026-07-10)
+
+### Problem Diagnosed
+User reported: Apps, extensions, and themes installed but not reflected in Spotify.
+
+### Root Cause
+- Spicetify was **NOT injected** into Spotify's XPUI directory
+- Missing `spicetify.css` and `spicetify.js` in `C:\Users\Isra\AppData\Roaming\Spotify\Apps\xpui\`
+- Config had `autoSkipExplicit.js` extension configured but file was **MISSING** physically
+- Spotify was running (needed to close before apply)
+
+### Solution Applied
+1. **Closed Spotify** process
+2. **Repaired paths** in Spicetify config:
+   - `spotify_path = C:\Users\Isra\AppData\Roaming\Spotify`
+   - `prefs_path = C:\Users\Isra\AppData\Roaming\Spotify\prefs`
+3. **Removed missing extension** from config (`autoSkipExplicit.js` → only `backmusic.js`)
+4. **Restored backup** and **applied** Spicetify:
+   - `spicetify restore backup`
+   - `spicetify apply`
+5. **Verified injection**: 12 `spicetify-routes-*.js/css/json` files created in XPUI
+6. **Launched Spotify** - now shows Spicetify with all apps/extensions
+
+### Script Improvements Added
+- `Test-SpicetifyInjected` - Checks if Spicetify is properly injected
+- `Get-SpicetifyInjectionStatus` - Detailed status of extensions/apps (missing files, injection state)
+- `Test-SpicetifyComponents` - New menu option [V] to verify Spicetify components
+- Enhanced `Repair-SpicetifyPaths` - Now verifies injection after repair
+- Added [V] Verify Spicetify components to main menu
+
+### Current State
+- ✅ Spicetify v2.44.0 installed
+- ✅ Spotify Desktop v1.2.93.667 (Roaming location)
+- ✅ Extensions: backmusic.js (injected)
+- ✅ Custom Apps: backmusic, splitify, marketplace, wave-visualizer (all injected)
+- ✅ Theme: marketplace (applied)
+- ✅ Injection verified: 12 spicetify-routes-* files in XPUI
+
+### Files Modified
+- `Spicetify_Manager.ps1` - Added injection verification functions, [V] menu option
+- `chat.md` - This update
+
+### Git Status
+- Modified: Spicetify_Manager.ps1, chat.md
+- Not yet committed (pending user review)
+
+### Key Learnings
+- Spicetify injection requires: close Spotify → backup → apply
+- `spicetify-routes-*.js` files indicate successful custom app injection
+- Config can reference files that don't exist physically (causes apply to skip them)
+- GitHub API rate limit can cause "Cannot fetch latest release" warnings but doesn't block apply
+- XPUI injection is in `C:\Users\Isra\AppData\Roaming\Spotify\Apps\xpui\` (not the .spa archive)
+
+---
+
 ## Notes for Other AIs
 - The script is a **single-file deliverable** - download and run
 - Requires **PowerShell 5.1+** (Windows 10/11)
