@@ -736,12 +736,11 @@ function Write-FadeIn {
 
 # Banner
 function Write-Banner {
-    # Use cursor positioning instead of Clear-Host to avoid flickering
-    try { [Console]::SetCursorPosition(0, 0) } catch {}
+    # Clear-Host is fast and prevents leftover content from previous renders
+    Clear-Host
     
     $bar = '  ' + ([string]$Script:Box.H * 78)
     
-    # Write banner lines at specific positions
     Write-Host ''
     Write-Host $bar -ForegroundColor $Script:Palette.Muted
     Write-Host ''
@@ -755,7 +754,7 @@ function Write-Banner {
         '          ███████║██║     ██║╚██████╗███████╗   ██║   ██║██║        ██║   ',
         '          ╚══════╝╚═╝     ╚═╝ ╚═════╝╚══════╝   ╚═╝   ╚═╝╚═╝        ╚═╝   '
     )
-    Write-FadeIn -Lines $bannerLines -DelayMs 50 -Color $Script:Palette.Logo
+    Write-FadeIn -Lines $bannerLines -DelayMs 0 -Color $Script:Palette.Logo
 
     Write-Host ''
     Write-Host '                                      MANAGER'
