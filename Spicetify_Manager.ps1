@@ -15,7 +15,7 @@
 .NOTES
     File Name      : Spicetify_Manager.ps1
     Project        : Spicetify Manager
-    Version        : 2.1.0
+    Version        : 2.2.0
     Author         : Israleche
     License        : MIT
     Prerequisite   : PowerShell 5.1+ (Windows 10/11)
@@ -73,7 +73,7 @@ $Script:IsCore    = $Script:PSVersion.PSEdition -eq 'Core'
 # 2. METADATA & PATHS
 # ============================================================================
 $Script:AppName      = 'Spicetify Manager'
-$Script:AppVersion   = '2.1.0'
+$Script:AppVersion   = '2.2.0'
 $Script:AppAuthor    = 'Israleche'
 $Script:ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $Script:ScriptDir) { $Script:ScriptDir = $PWD.Path }
@@ -397,25 +397,114 @@ function Initialize-ConsoleSize {
 }
 
 function Read-MenuSelection {
-    param([string[]]$Items, [int]$DefaultIdx = 0, [string]$Prompt = 'Select')
-    Write-BoxTop $Prompt
-    $idx = $DefaultIdx
-    while ($true) {
-        Clear-Host
-        Write-BoxTop $Prompt
-        for ($i = 0; $i -lt $Items.Count; $i++) {
-            $marker = if ($i -eq $idx) { '→ ' } else { '  ' }
-            $color = if ($i -eq $idx) { $Script:Palette.Accent } else { $Script:Palette.Primary }
-            Write-Host ($marker + $Items[$i]) -ForegroundColor $color
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string[]]$Options,
+        [int]$DefaultIndex = 0,
+        [string]$Footer
+    )
+    $selected = if ($DefaultIndex -ge 0 -and $DefaultIndex -lt $Options.Count) { $DefaultIndex } else { 0 }
+
+    if (-not (Test-InteractiveConsole)) {
+        Write-Banner
+        Write-BoxTop -Title $Title
+        for ($i = 0; $i -lt $Options.Count; $i++) {
+            Write-BoxLine ("[{0}] {1}" -f ($i + 1), $Options[$i])
         }
+        if ($Footer) { Write-BoxSeparator; Write-BoxLine $Footer }
         Write-BoxBottom
-        
-        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode
-        switch ($key) {
-            38 { $idx = ($idx - 1 + $Items.Count) % $Items.Count } # Up arrow
-            40 { $idx = ($idx + 1) % $Items.Count }                 # Down arrow
-            13 { return $idx }                                       # Enter
-            27 { return -1 }                                         # Esc
+        while ($true) {
+            Write-Host -NoNewline '  Select an option: ' -ForegroundColor $Script:Palette.Prompt
+            $c = (Read-Host).Trim()
+            if ($c -match '^\d+$') {
+                $n = [int]$c
+                if ($n -ge 1 -and $n -le $Options.Count) { return ($n - 1) }
+            }
+            Write-Warn 'Invalid option.'
+        }
+    }
+
+    # Interactive: arrow-key navigation with in-place repaint.
+    Update-BoxWidth
+    Write-Banner
+    Write-BoxTop -Title $Title
+    $menuTop = [Console]::CursorTop
+    for ($i = 0; $i -lt $Options.Count; $i++) { Write-BoxLine '' }
+    if ($Footer) {
+        Write-BoxSeparator
+        Write-BoxLine ''
+    }
+    Write-BoxBottom
+    $footerRow = [Console]::CursorTop - 1
+    Write-Host "  Use up/down arrows to navigate, ENTER to select, ESC to cancel" -ForegroundColor $Script:Palette.Muted
+    $hintRow = [Console]::CursorTop - 1
+
+    $inner = $Script:BoxWidth - 4
+
+    $drawOption = {
+        param($index, $isSelected)
+        $row = $menuTop + $index
+        try { [Console]::SetCursorPosition(0, $row) } catch { return }
+        $opt  = $Options[$index]
+        $marker = if ($isSelected) { $Script:Box.Bullet } else { ' ' }
+        $line  = " $marker  $opt"
+        if ($line.Length -gt $inner) { $line = $line.Substring(0, $inner) }
+        $pad = $inner - $line.Length
+        Write-Host -NoNewline ('  ' + $Script:Box.V + ' ' + (' ' * $inner) + ' ' + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
+        try { [Console]::SetCursorPosition(0, $row) } catch { return }
+        if ($isSelected) {
+            Write-Host -NoNewline ("  " + $Script:Box.V + " ") -ForegroundColor $Script:Palette.Muted
+            Write-Host -NoNewline $line -ForegroundColor $Script:Palette.Accent
+            Write-Host -NoNewline (' ' * $pad) -ForegroundColor $Script:Palette.Accent
+            Write-Host -NoNewline (" " + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
+        } else {
+            Write-Host -NoNewline ("  " + $Script:Box.V + " ") -ForegroundColor $Script:Palette.Muted
+            Write-Host -NoNewline $line -ForegroundColor $Script:Palette.Primary
+            Write-Host -NoNewline (' ' * $pad) -ForegroundColor $Script:Palette.Primary
+            Write-Host -NoNewline (" " + $Script:Box.V) -ForegroundColor $Script:Palette.Muted
+        }
+    }
+
+    for ($i = 0; $i -lt $Options.Count; $i++) {
+        & $drawOption $i ($i -eq $selected)
+    }
+
+    try { [Console]::SetCursorPosition(0, $hintRow) } catch {}
+
+    while ($true) {
+        $key = [Console]::ReadKey($true)
+        $oldSelected = $selected
+        switch ($key.Key) {
+            'UpArrow'   { $selected = ($selected - 1 + $Options.Count) % $Options.Count }
+            'DownArrow' { $selected = ($selected + 1) % $Options.Count }
+            'Home'      { $selected = 0 }
+            'End'       { $selected = $Options.Count - 1 }
+            'Enter'     {
+                try { [Console]::SetCursorPosition(0, $hintRow + 1) } catch {}
+                Write-Host ''
+                return $selected
+            }
+            'Escape'    {
+                try { [Console]::SetCursorPosition(0, $hintRow + 1) } catch {}
+                Write-Host ''
+                return -1
+            }
+            default {
+                $dk = $key.KeyChar
+                if ($dk -match '^\d$') {
+                    $n = [int]$dk.ToString()
+                    if ($n -ge 1 -and $n -le $Options.Count) {
+                        try { [Console]::SetCursorPosition(0, $hintRow + 1) } catch {}
+                        Write-Host ''
+                        return ($n - 1)
+                    }
+                }
+            }
+        }
+        if ($selected -ne $oldSelected) {
+            & $drawOption $oldSelected $false
+            & $drawOption $selected   $true
+            try { [Console]::SetCursorPosition(0, $hintRow) } catch {}
         }
     }
 }
@@ -533,7 +622,8 @@ function Write-FadeIn {
 function Write-Banner {
     Clear-Host
     Write-Host ''
-    Write-Host '  ================================================================================' -ForegroundColor $Script:Palette.Muted
+    $bar = '  ' + ([string]$Script:Box.H * 78)
+    Write-Host $bar -ForegroundColor $Script:Palette.Muted
     Write-Host ''
 
     # Single SPICETIFY block in RED
@@ -550,8 +640,8 @@ function Write-Banner {
     Write-Host ''
     Write-Host '                                      MANAGER'
     Write-Host '                                    By Israleche'
-	Write-Host ''
-    Write-Host '  ================================================================================' -ForegroundColor $Script:Palette.Muted
+    Write-Host ''
+    Write-Host $bar -ForegroundColor $Script:Palette.Muted
 
     $prog = if ($Script:Settings.ShowProgress) { 'ON' } else { 'OFF' }
     $fix  = if ($Script:Settings.AutoFixSpotify)      { 'ON' } else { 'OFF' }
@@ -567,7 +657,7 @@ function Write-Banner {
     if ($open -eq 'ON') { Write-Host -NoNewline $open -ForegroundColor $Script:Palette.On }
     else { Write-Host -NoNewline $open -ForegroundColor $Script:Palette.Off }
     Write-Host ''
-    Write-Host '  ================================================================================' -ForegroundColor $Script:Palette.Muted
+    Write-Host $bar -ForegroundColor $Script:Palette.Muted
     Write-Host ''
 }
 
@@ -1127,39 +1217,40 @@ function Show-MainMenu {
         }
 
         Write-BoxTop 'MAIN MENU'
-        Write-BoxLine '[1] Auto (spicetify auto: backup/apply/launch)'
-        Write-BoxLine '[2] Full restore & repair (restore + backup + apply)'
-        Write-BoxLine '[3] Quick repair (backup apply)'
-        Write-BoxLine '[4] Manage themes / extensions / apps'
-        Write-BoxLine '[5] Install / repair Marketplace'
-        Write-BoxLine '[6] Upgrade Spicetify CLI'
-        Write-BoxLine '[7] Open Spicetify config folder'
-        Write-BoxLine '[8] View status & info'
-        Write-BoxLine '[9] Install / fix desktop Spotify'
-        Write-BoxLine '[V] Verify Spicetify components'
-        Write-BoxLine '[S] Settings'
-        Write-BoxLine '[A] Advanced options'
-        Write-BoxLine '[H] Help & documentation'
-        Write-BoxLine '[0] Exit'
-        Write-BoxBottom
-
-        $c = Read-Host '  Choose an option'
+        $menuOptions = @(
+            'Auto (spicetify auto: backup/apply/launch)'
+            'Full restore & repair (restore + backup + apply)'
+            'Quick repair (backup apply)'
+            'Manage themes / extensions / apps'
+            'Install / repair Marketplace'
+            'Upgrade Spicetify CLI'
+            'Open Spicetify config folder'
+            'View status & info'
+            'Install / fix desktop Spotify'
+            'Verify Spicetify components'
+            'Settings'
+            'Advanced options'
+            'Help & documentation'
+            'Exit'
+        )
+        $idx = Read-MenuSelection -Title 'MAIN MENU' -Options $menuOptions -DefaultIndex 0
+        if ($idx -lt 0) { continue }
         try {
-            switch ($c.ToUpper()) {
-                '1' { Invoke-AutoLaunch }
-                '2' { Invoke-FullRestore }
-                '3' { Invoke-QuickRepair }
-                '4' { Show-ThemesMenu }
-                '5' { Invoke-MarketplaceInstall }
-                '6' { Invoke-Upgrade }
-                '7' { Write-Banner; try { $res = Invoke-Spicetify -Args @('-c') -AllowFailure -Quiet; $path = $res.Output.Trim(); if ($path -and (Test-Path $path)) { Invoke-Item (Split-Path -Parent $path) } else { Invoke-Item $Script:UserDir } } catch { Write-Err $_.Exception.Message }; Read-Host '  Press ENTER' | Out-Null }
-                '8' { Show-Status }
-                '9' { Write-Banner; Write-Step 'Checking Spotify...'; $null = Install-SpotifyDesktop; if (Test-SpicetifyInstalled) { $null = Repair-SpicetifyPaths }; Read-Host '  Press ENTER' | Out-Null }
-                'V' { Test-SpicetifyComponents }
-                'S' { Show-SettingsMenu }
-                'A' { Show-AdvancedMenu }
-                'H' { Show-HelpMenu }
-                '0' { Write-Host ''; Write-Host '  Goodbye!' -ForegroundColor $Script:Palette.Success; Start-Sleep -Milliseconds 400; exit 0 }
+            switch ($idx) {
+                0 { Invoke-AutoLaunch }
+                1 { Invoke-FullRestore }
+                2 { Invoke-QuickRepair }
+                3 { Show-ThemesMenu }
+                4 { Invoke-MarketplaceInstall }
+                5 { Invoke-Upgrade }
+                6 { Write-Banner; try { $res = Invoke-Spicetify -Args @('-c') -AllowFailure -Quiet; $path = $res.Output.Trim(); if ($path -and (Test-Path $path)) { Invoke-Item (Split-Path -Parent $path) } else { Invoke-Item $Script:UserDir } } catch { Write-Err $_.Exception.Message }; Read-Host '  Press ENTER' | Out-Null }
+                7 { Show-Status }
+                8 { Write-Banner; Write-Step 'Checking Spotify...'; $null = Install-SpotifyDesktop; if (Test-SpicetifyInstalled) { $null = Repair-SpicetifyPaths }; Read-Host '  Press ENTER' | Out-Null }
+                9 { Test-SpicetifyComponents }
+                10 { Show-SettingsMenu }
+                11 { Show-AdvancedMenu }
+                12 { Show-HelpMenu }
+                13 { Write-Host ''; Write-Host '  Goodbye!' -ForegroundColor $Script:Palette.Success; Start-Sleep -Milliseconds 400; exit 0 }
                 default { Write-Warn 'Invalid option.'; Start-Sleep -Milliseconds 500 }
             }
         } catch {

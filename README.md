@@ -4,28 +4,34 @@
 
 <p align=\"center\">
   <strong>Modern TUI control panel for Spicetify + Spotify Desktop</strong><br/>
-  <sub>v2.1.0 — Professional PowerShell architecture with persistent settings</sub>
+  <sub>v2.2.0 — Professional PowerShell architecture with arrow-key navigation</sub>
 </p>
 
 ---
 
-## ✨ What's New in v2.1.0
+## What's New in v2.2.0
 
-- ⚙️ **Persistent JSON settings** — Configuration saved to `$HOME/.spicetify-manager/settings.json`
-- 🚀 **Silent mode** — Run non-interactively with `-Silent` parameter
-- 📊 **Advanced UI helpers** — Progress bars, spinners, arrow-key menus
-- 📖 **About screen** — App info, version, license, and links
-- 🔧 **Enhanced parameters** — `-ShowProgress`, `-EnableDebug`, `-AutoFix`, `-AutoOpen`, `-NoPersist`
-- 🖥️ **Console size initialization** — Adaptive terminal sizing
-- ✅ **100% backward compatible** — All existing features unchanged
+- **Arrow-key navigation** — Main menu uses up/down arrows with `►` bullet marker (Istar-Pack style)
+- **Box-drawing separators** — Banner now uses `─` instead of `=` (matches Istar-Pack)
+- **In-place repaint** — Menus repaint without flicker using cursor positioning
+- **Fallback mode** — Non-interactive consoles use numeric input automatically
 
-## ✨ What's New in v2.0.0
+## What's New in v2.1.0
 
-- 🎨 **Modern curved borders** (╭─╮ style instead of ┌─┐)
-- 🎭 **Enhanced color palette** — Magenta logo, Cyan highlights for better accessibility
-- 📦 **L2 UTF-8 box-drawing** — Professional terminal UI
-- 🆕 **Info helper** for neutral informational messages
-- ⚙️ **Adaptive window width** for better terminal compatibility
+- **Persistent JSON settings** — Configuration saved to `$HOME/.spicetify-manager/settings.json`
+- **Silent mode** — Run non-interactively with `-Silent` parameter
+- **Advanced UI helpers** — Progress bars, spinners, arrow-key menus
+- **About screen** — App info, version, license, and links
+- **Enhanced parameters** — `-ShowProgress`, `-EnableDebug`, `-AutoFix`, `-AutoOpen`, `-NoPersist`
+- **Console size initialization** — Adaptive terminal sizing
+
+## What's New in v2.0.0
+
+- **Modern curved borders** (╭─╮ style instead of ┌─┐)
+- **Enhanced color palette** — Magenta logo, Cyan highlights for better accessibility
+- **L2 UTF-8 box-drawing** — Professional terminal UI
+- **Info helper** for neutral informational messages
+- **Adaptive window width** for better terminal compatibility
 
 ---
 
@@ -42,6 +48,7 @@
 | **Spotify Desktop** | Detect Store vs Desktop, auto-install the correct version |
 | **Path Repair** | Automatically fix `spotify_path` and `prefs_path` in spicetify config |
 | **Upgrade** | One-click Spicetify CLI upgrade |
+| **Verify Components** | Check if Spicetify is properly injected with all apps/extensions |
 
 ---
 

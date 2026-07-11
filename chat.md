@@ -218,6 +218,51 @@ User reported: Apps, extensions, and themes installed but not reflected in Spoti
 
 ---
 
+## Phase 6: UI Polish - Separators & Arrow Navigation (2026-07-10)
+
+### Original Request (from earlier conversation)
+User wanted:
+1. Clean repository (remove reference files) ✅ Done Phase 3
+2. Adjust separators from `====` to Istar-Pack style (`─`) ❌ Was pending
+3. Selection by arrow keys (flechitas) like Istar-Pack ❌ Was pending
+4. Make a release with these changes ❌ Was pending
+5. Fix README, remove emojis, update data ✅ Done Phase 4
+
+### Changes Made
+1. **Banner separators**: Changed `===` (79 chars) to `─` (box-drawing, 78 chars) matching Istar-Pack
+   - Before: `Write-Host '  ===...==='`
+   - After: `$bar = '  ' + ([string]$Script:Box.H * 78); Write-Host $bar`
+
+2. **Arrow-key navigation**: Rewrote `Read-MenuSelection` to match Istar-Pack exactly:
+   - Signature: `-Title`, `-Options`, `-DefaultIndex`, `-Footer`
+   - Uses `►` bullet marker for selected item
+   - In-place repaint (no flicker) using `[Console]::SetCursorPosition`
+   - Supports Up/Down arrows, Home/End, Enter, Escape, and number keys
+   - Falls back to numeric input if console is not interactive
+
+3. **Main menu**: Now uses `Read-MenuSelection` with 14 options:
+   - Auto, Full Restore, Quick Repair, Themes/Extensions/Apps, Marketplace, Upgrade, Config Folder, Status, Spotify Desktop, Verify Components, Settings, Advanced, Help, Exit
+   - Returns index 0-13, mapped to actions via switch
+
+### Files Modified
+- `Spicetify_Manager.ps1`:
+  - `Write-Banner` - Changed separators to box-drawing
+  - `Read-MenuSelection` - Complete rewrite to Istar-Pack style
+  - `Show-MainMenu` - Uses `Read-MenuSelection` with arrow navigation
+- `chat.md` - This update
+
+### Testing
+- Script loads without errors (verified with `-ShowAbout`)
+- `Read-MenuSelection` function defined and called correctly
+- `Write-BoxSeparator` available for use in menu
+
+### Pending
+- Commit changes
+- Update README to mention arrow-key navigation
+- Create new release tag (v2.2.0 or similar)
+
+---
+
 ## Notes for Other AIs
 - The script is a **single-file deliverable** - download and run
 - Requires **PowerShell 5.1+** (Windows 10/11)
@@ -225,5 +270,6 @@ User reported: Apps, extensions, and themes installed but not reflected in Spoti
 - **Do NOT run as Administrator** - Spicetify refuses admin
 - Settings persist in `$HOME/.spicetify-manager/` (survives script re-download)
 - Architecture closely follows **Istar-Pack.ps1** patterns
-- All UI uses **L2 UTF-8 box-drawing** (╭─╮, ╰─╯, ├─┤)
+- All UI uses **L2 UTF-8 box-drawing** (╭─╮, ╰─╯, ├─┤, ─)
 - Color palette: 11 colors (Logo, Primary, Muted, Accent, On, Off, Success, Warning, Danger, Info, Prompt)
+- Main menu uses **arrow-key navigation** with `►` bullet marker (Istar-Pack style)
